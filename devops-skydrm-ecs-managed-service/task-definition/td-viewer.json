@@ -1,0 +1,54 @@
+{
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/viewer-$ECS_CLUSTER_NAME",
+          "awslogs-region": "$REGION",
+          "awslogs-stream-prefix": "ecs"
+          }
+        },
+      "portMappings": [
+        {
+          "hostPort": 0,
+          "protocol": "tcp",
+          "containerPort": 8443
+        }
+      ],
+      "mountPoints": [
+        {
+          "containerPath": "/var/opt/nextlabs/rms/shared/",
+          "sourceVolume": "rms-shared"
+        },
+        {
+          "containerPath": "/opt/nextlabs/rms/viewer/viewers/",
+          "sourceVolume": "viewer-packages"
+        }
+      ],
+      "memoryReservation": 500,
+      "image": "579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm-viewer:$BUILD",
+      "essential": true,
+      "name": "viewer"
+    }
+  ],
+  "family": "viewer-$ECS_CLUSTER_NAME",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "bridge",
+  "volumes": [
+    {
+      "name": "rms-shared",
+      "host": {
+        "sourcePath": "/mnt/efs/$ECS_CLUSTER_NAME"
+      }
+    },
+    {
+      "name": "viewer-packages",
+      "host": {
+        "sourcePath": "/mnt/efs/$ECS_CLUSTER_NAME/viewerPackages"
+      }
+    }
+  ]
+}

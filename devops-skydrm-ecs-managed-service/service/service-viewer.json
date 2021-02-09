@@ -1,0 +1,34 @@
+{
+    "serviceName": "viewer-$ECS_CLUSTER_NAME",
+    "loadBalancers": [
+        {
+            "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:579292207088:targetgroup/TG-VIEWER-ECS-$ECS_CLUSTER_NAME/ef601a8820115faf",
+            "containerName": "viewer",
+            "containerPort": 8443
+        }
+    ],
+    "desiredCount": 1,
+    "launchType": "EC2",
+    "taskDefinition": "arn:aws:ecs:us-east-1:579292207088:task-definition/viewer-$ECS_CLUSTER_NAME:1",
+    "deploymentConfiguration": {
+        "maximumPercent": 200,
+        "minimumHealthyPercent": 100
+    },
+    "placementConstraints": [],
+    "placementStrategy": [
+
+        {
+
+            "type": "binpack",
+
+            "field": "MEMORY"
+
+        }
+
+    ],
+    "healthCheckGracePeriodSeconds": 10,
+    "schedulingStrategy": "REPLICA",
+    "enableECSManagedTags": false
+
+    
+}

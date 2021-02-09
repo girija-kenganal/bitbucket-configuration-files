@@ -1,0 +1,34 @@
+{
+    "serviceName": "rms-WWW-SKYDRM-COM",
+    "loadBalancers": [
+        {
+            "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:512169772597:targetgroup/TG-RMS-ECS-WWW-SKYDRM-COM/84ca6acd007a4417",
+            "containerName": "rms",
+            "containerPort": 8443
+        }
+    ],
+    "desiredCount": 0,
+    "launchType": "EC2",
+    "taskDefinition": "arn:aws:ecs:us-east-1:512169772597:task-definition/rms-WWW-SKYDRM-COM:1",
+    "deploymentConfiguration": {
+        "maximumPercent": 200,
+        "minimumHealthyPercent": 100
+    },
+    "placementConstraints": [],
+    "placementStrategy": [
+
+        {
+
+            "type": "binpack",
+
+            "field": "MEMORY"
+
+        }
+
+    ],
+    "healthCheckGracePeriodSeconds": 10,
+    "schedulingStrategy": "REPLICA",
+    "enableECSManagedTags": false
+
+    
+}

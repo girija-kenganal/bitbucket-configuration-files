@@ -1,0 +1,49 @@
+{
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/message-WWW-SKYDRM-COM",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+          }
+        },
+      "portMappings": [
+        {
+          "hostPort": 5672,
+          "protocol": "tcp",
+          "containerPort": 5672
+        },
+        {
+          "hostPort": 15672,
+          "protocol": "tcp",
+          "containerPort": 15672
+        }
+      ],
+      "mountPoints": [
+        {
+          "containerPath": "/var/lib/rabbitmq/data",
+          "sourceVolume": "rabbitmq_data"
+        }
+      ],
+      "memoryReservation": 500,
+      "image": "579292207088.dkr.ecr.us-east-1.amazonaws.com/rabbitmq:3-management",
+      "essential": true,
+      "name": "messagequeue"
+    }
+  ],
+  "family": "message-WWW-SKYDRM-COM",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "host",
+  "volumes": [
+    {
+      "name": "rabbitmq_data",
+      "host": {
+        "sourcePath": "/mnt/efs/WWW-SKYDRM-COM/shared"
+      }
+    }
+  ]
+}

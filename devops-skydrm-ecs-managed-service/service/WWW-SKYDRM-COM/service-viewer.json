@@ -1,0 +1,34 @@
+{
+    "serviceName": "viewer-WWW-SKYDRM-COM",
+    "loadBalancers": [
+        {
+            "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:512169772597:targetgroup/TG-VIEWER-ECS-WWW-SKYDRM-COM/ef601a8820115faf",
+            "containerName": "viewer",
+            "containerPort": 8443
+        }
+    ],
+    "desiredCount": 0,
+    "launchType": "EC2",
+    "taskDefinition": "arn:aws:ecs:us-east-1:512169772597:task-definition/viewer-WWW-SKYDRM-COM:1",
+    "deploymentConfiguration": {
+        "maximumPercent": 200,
+        "minimumHealthyPercent": 100
+    },
+    "placementConstraints": [],
+    "placementStrategy": [
+
+        {
+
+            "type": "binpack",
+
+            "field": "MEMORY"
+
+        }
+
+    ],
+    "healthCheckGracePeriodSeconds": 10,
+    "schedulingStrategy": "REPLICA",
+    "enableECSManagedTags": false
+
+    
+}

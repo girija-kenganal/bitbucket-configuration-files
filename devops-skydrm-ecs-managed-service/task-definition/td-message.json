@@ -1,0 +1,49 @@
+{
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/message-$ECS_CLUSTER_NAME",
+          "awslogs-region": "$REGION",
+          "awslogs-stream-prefix": "ecs"
+          }
+        },
+      "portMappings": [
+        {
+          "hostPort": 5672,
+          "protocol": "tcp",
+          "containerPort": 5672
+        },
+        {
+          "hostPort": 15672,
+          "protocol": "tcp",
+          "containerPort": 15672
+        }
+      ],
+      "mountPoints": [
+        {
+          "containerPath": "/var/lib/rabbitmq/data",
+          "sourceVolume": "rabbitmq_data"
+        }
+      ],
+      "memoryReservation": 500,
+      "image": "579292207088.dkr.ecr.us-east-1.amazonaws.com/rabbitmq:3-management",
+      "essential": true,
+      "name": "messagequeue"
+    }
+  ],
+  "family": "message-$ECS_CLUSTER_NAME",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "host",
+  "volumes": [
+    {
+      "name": "rabbitmq_data",
+      "host": {
+        "sourcePath": "/mnt/efs/$ECS_CLUSTER_NAME/shared"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1034 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy SKYRM ECS CLUSTER'
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0323c3dd2da7fb37d
+    us-west-2:
+      AMI: ami-0d6621c01e8c2de2c
+
+Parameters:
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0e39e36e3c8ea851f
+  PublicSubnetId1A:
+    Description: The subnet where you want to create ALB
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-052e1a0295b00a303
+  PublicSubnetId1B:
+    Description: The subnet where you want to create ALB
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-09eefe6610f804add
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-05574acdb41215a7d
+  PrivateSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0cad967142fef3e22
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.large
+    AllowedValues: [t2.large, m1.small,
+      m1.medium, m1.large, m1.xlarge, m2.xlarge, m2.2xlarge, m2.4xlarge, m3.medium,
+      m3.large, m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge,
+      m4.10xlarge, c1.medium, c1.xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge,
+      c3.8xlarge, c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, g2.2xlarge,
+      g2.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge, r3.8xlarge, i2.xlarge,
+      i2.2xlarge, i2.4xlarge, i2.8xlarge, d2.xlarge, d2.2xlarge, d2.4xlarge, d2.8xlarge,
+      hi1.4xlarge, hs1.8xlarge, cr1.8xlarge, cc2.8xlarge, cg1.4xlarge]
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 30 
+  PublicHostedzoneId:
+    Type: String
+    Default: Z1ER6BV72YIBBR
+  PrivateHostedzoneId:
+    Type: String
+    Default: Z33TM4QOXK2I9L
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: testdrm.com.
+  SubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: ccname 
+  CertARN:
+    Description: ACM Cert ARN
+    Type: String
+    Default: arn:aws:acm:us-east-1:579292207088:certificate/e2afabe7-ce51-44f4-900c-4897b1f21ce4
+  VpcEndPointId:
+    Description: VPC End Point ID
+    Type: String
+    Default: vpce-0fe3238eaf4efb262 
+  FileSystemId:
+    Description: EFS File System ID
+    Type: String
+    Default: fs-5c71fddc
+  BastionSecGroupId:
+    Description: Bastion Security Group Id
+    Type: String
+    Default: sg-0403af2eb3ba3099a
+  SkydrmBuildNo:
+    Description: SKYDRM Build Number
+    Type: String
+    Default: 10.0271
+  CCWebConsoleURL:
+    Description: CC CONSOLE URL
+    Type: String
+    Default: none.nextlabs.solutions
+  ICENETURL:
+    Description: ICENET URL
+    Type: String
+    Default: none.nextlabs.solutions
+  CCVersion:
+    Description: ICENET URL
+    Type: String
+    Default: 9.1
+  Email:
+    Description: 'Optional email address that will receive alerts.'
+    Type: String
+    Default: ''
+  FallbackEmail:
+    Description: 'Optional email address that will receive alerts if alerts can not be delivered.'
+    Type: String
+    Default: ''
+
+
+Resources:
+
+  Topic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  TopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: Id1
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Sid1
+          Effect: Allow
+          Principal:
+            Service:
+            - 'events.amazonaws.com' # Allow CloudWatch Events
+            - 'budgets.amazonaws.com' # Allow Budget Notifications
+            - 'rds.amazonaws.com' # Allow RDS Events
+            - 's3.amazonaws.com' # Allow S3 Event Notifications
+            - 'backup.amazonaws.com' # Allow Backup Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+        - Sid: Sid2
+          Effect: Allow
+          Principal:
+            AWS: '*' # Allow CloudWatch Alarms, ElastiCache Notifications, Elastic Beanstalk Notifications, Auto Scaling Notification
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+          Condition:
+            StringEquals:
+              'AWS:SourceOwner': !Ref 'AWS::AccountId'
+        - Sid: Sid3
+          Effect: Allow
+          Principal:
+            Service: 'ses.amazonaws.com' # Allow SES Notifications & Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+          Condition:
+            StringEquals:
+              'AWS:Referer': !Ref 'AWS::AccountId'
+      Topics:
+      - !Ref Topic
+ 
+  FallbackTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  EmailSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !Ref Email
+      Protocol: email
+      TopicArn: !Ref Topic
+  FallbackEmailSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !Ref FallbackEmail
+      Protocol: email
+      TopicArn: !Ref FallbackTopic
+      
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: 
+        'Fn::Transform':
+          - Name: 'String'
+            Parameters:
+              InputString: !Join [ '-', [ !Ref SubdomainName, !Select [0, !Split [".", !Ref DomainName]] , !Select [1, !Split [".", !Ref DomainName]]   ] ]
+              Operation: Upper
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: environment
+          Value: production
+
+  EC2SecGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: ALBSecGroup
+    Properties:
+      GroupDescription: Security group for web instances
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecGroup
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref ALBSecGroup
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+      VpcId:
+        !Ref Vpc
+
+  EFSSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EFS mount targets
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref EC2SecGroup
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          
+  EFSSecGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !GetAtt EFSSecGroup.GroupId
+      GroupId: !GetAtt EFSSecGroup.GroupId
+
+  ALBSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ALB
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      VpcId:
+        !Ref Vpc       
+
+  ProjectBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [ '.', [ !Ref SubdomainName, !Ref DomainName , 'myspace' ] ] 
+
+  MyspaceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [ '.', [ !Ref SubdomainName, !Ref DomainName , 'projects' ] ] 
+
+  ProjectBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      PolicyDocument:
+        Id: MyPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ProjectBucketPolicy
+          Action:
+          - s3:*
+          Effect: Allow
+          Resource: !Sub "arn:aws:s3:::${ProjectBucket}/*"
+          Principal:
+            AWS: !GetAtt BucketUser.Arn
+          Condition: 
+            StringEquals: 
+              aws:sourceVpce: !Ref VpcEndPointId 
+      Bucket: !Ref ProjectBucket
+
+  MyspaceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      PolicyDocument:
+        Id: MyspaceBucketPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: AllowFullAccess
+          Action:
+          - s3:*
+          Effect: Allow
+          Resource: !Sub "arn:aws:s3:::${MyspaceBucket}/*"
+          Principal:
+            AWS: !GetAtt user1.Arn
+          Condition: 
+            StringEquals: 
+              aws:sourceVpce: !Ref VpcEndPointId 
+      Bucket: !Ref MyspaceBucket
+
+  BucketUser:
+    Type: AWS::IAM::User
+    Properties:
+      Path: "/"
+      Policies:
+      - PolicyName: giveaccesstoqueueonly
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:*
+            Resource: [ !GetAtt 'ProjectBucket.Arn' , !GetAtt 'MyspaceBucket.Arn']
+
+  BucketUserKeys:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName:
+        !Ref BucketUser
+  BucketAccessKey:
+    Value:
+      !Ref BucketUserKeys
+  BucketSecretKey:
+    Value: !GetAtt BucketUserKeys.SecretAccessKey
+        
+  PublicALB: 
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Name: !Join [ '-', [ 'ALB',!Ref SubdomainName, !Select [0, !Split [".", !Ref DomainName]] , !Select [1, !Split [".", !Ref DomainName]]   ] ]
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: 60
+      SecurityGroups:
+      - !Ref ALBSecGroup
+      Subnets: [!Ref PrivateSubnetId1A , !Ref PrivateSubnetId1B]
+      Tags:
+      - Key: Name
+        Value: !Join [ '', [ 'Public ALB / ', !Ref 'AWS::StackName' ] ]
+
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Host: !Join [ '.', [ !Ref SubDomainName, !Ref DomainName ] ]
+            Query: '#{query}'
+            Path: /rms/login
+            Port: '443'
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref PublicALB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListenerHTTPS:
+    Condition: SslCertificate
+    Type : AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+      - CertificateArn: !Ref CertARN
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Host: !Join [ '.', [ !Ref SubDomainName, !Ref DomainName ] ]
+            Query: '#{query}'
+            Path: /rms/login
+            Port: '443'
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref PublicALB
+      Port: 443
+      Protocol: HTTPS
+
+  RMSTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Join [ '-', [ 'TG-RMS',!Ref SubdomainName, !Select [0, !Split [".", !Ref DomainName]] , !Select [1, !Split [".", !Ref DomainName]]   ] ]
+      HealthCheckPath: '/'
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Port: 8443
+      Matcher:
+        HttpCode: 200
+      Protocol: HTTPS
+      Tags:
+      - Key: Name
+        Value: !Join [ '', [ 'RMS TG / ', !Ref 'AWS::StackName' ] ]
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VpcId
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: 50
+
+  ViewerTargetGroup:
+    Name: !Join [ '-', [ 'TG-VIEWER',!Ref SubdomainName, !Select [0, !Split [".", !Ref DomainName]] , !Select [1, !Split [".", !Ref DomainName]]   ] ]
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: '/'
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Port: 8443
+      Matcher:
+        HttpCode: 200
+      Protocol: HTTPS
+      Tags:
+      - Key: Name
+        Value: !Join [ '', [ 'Viewer TG / ', !Ref 'AWS::StackName' ] ]
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VpcId
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: 50
+
+  RouterTargetGroup:
+    Name: !Join [ '-', [ 'TG-ROUTER',!Ref SubdomainName, !Select [0, !Split [".", !Ref DomainName]] , !Select [1, !Split [".", !Ref DomainName]]   ] ]
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: '/'
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Port: 8443
+      Matcher:
+        HttpCode: 200
+      Protocol: HTTPS
+      Tags:
+      - Key: Name
+        Value: !Join [ '', [ 'Router TG / ', !Ref 'AWS::StackName' ] ]
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VpcId
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: 50
+
+
+  RMSALBListenerRule: 
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: 
+    - ALBListenerHTTPS
+    - RMSTargetGroup
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref RMSTargetGroup
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/rms/*"
+      ListenerArn: !Ref ALBListenerHTTPS
+      Priority: 1
+
+  ViewerALBListenerRule: 
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: 
+    - ALBListenerHTTPS
+    - ViewerTargetGroup
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref ViewerTargetGroup
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/viewer/*"
+      ListenerArn: !Ref ALBListenerHTTPS
+      Priority: 1
+
+  RouterALBListenerRule: 
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: 
+    - ALBListenerHTTPS
+    - RouterTargetGroup
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref RouterTargetGroup
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/router/*"
+      ListenerArn: !Ref ALBListenerHTTPS
+      Priority: 1
+
+  TermsALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - RedirectConfig:
+            Host: www.nextlabs.com
+            Path: "/terms-conditions-rights-management"
+            Port: 443
+            Protocol: "HTTPS"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+          Type: "redirect"
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/TermsAndConditions.html"
+      ListenerArn:
+        Ref: ALBListenerHTTPS
+      Priority: 1
+
+  RMSTermsALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - RedirectConfig:
+            Host: www.nextlabs.com
+            Path: "/terms-conditions-rights-management"
+            Port: 443
+            Protocol: "HTTPS"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+          Type: "redirect"
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/rms/TermsAndConditions.html"
+      ListenerArn:
+        Ref: ALBListenerHTTPS
+      Priority: 2
+
+  PrivacyALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - RedirectConfig:
+            Host: www.nextlabs.com
+            Path: "/privacy-policy"
+            Port: 443
+            Protocol: "HTTPS"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+          Type: "redirect"
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - "/rms/PrivacyPolicy.html"
+      ListenerArn:
+        Ref: ALBListenerHTTPS
+      Priority: 2
+
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ]
+      InstanceMonitoring: true
+      InstanceType: !Ref ContainerInstanceInstanceType
+      KeyName: !Ref EC2KeyName
+      SecurityGroups:
+        - !Ref EC2SecGroup
+      UserData:
+        Fn::Base64: !Sub |     # No more Fn::Join needed
+            #!/bin/bash
+            S3_ACCESS_KEY=
+            S3_SECRET_KEY=
+            aws s3 cp s3://nxtlbsrelease/ECS_CLUSTER_NAME-config.zip /tmp
+            unzip /tmp/ECS_CLUSTER_NAME-config.zip -d /tmp
+            chmod +x ECS_CLUSTER_NAME-config/ec2-userdata.sh
+            ./ECS_CLUSTER_NAME-config/ec2-userdata.sh
+
+  ASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: LaunchConfig
+    Properties:
+      AutoScalingGroupName:  !Join [ '-', [ 'ASG', 'ECS_CLUSTER_NAME' ] ]
+      Cooldown: 60
+      HealthCheckGracePeriod: 120
+      HealthCheckType: EC2
+      LaunchConfigurationName: !Ref LaunchConfig
+      MaxSize: 4
+      MinSize: 1
+      DesiredCapacity: 1
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'ContainerInstance / ', !Ref 'AWS::StackName' ] ]
+          PropagateAtLaunch: true
+      VPCZoneIdentifier:
+        - subnet-5ea0c127
+        - subnet-6194ea3b
+
+  CPUPolicyASG:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref ASG
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 80
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: '/'
+      Roles:
+      - !Ref InstanceRole
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: '/'
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogStreams
+            Resource:
+            - arn:aws:logs:*:*:*
+
+  ALBRecordSet:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: !Join ['', [!Ref DomainName, '.']]
+      RecordSets:
+      - Name: !Join ['', [!Ref SubDomainName, !Ref DomainName, '.']]
+        Type: A
+        AliasTarget:
+          DNSName: !GetAtt PublicALB.DNSName
+          EvaluateTargetHealth: True
+          HostedZoneId: !Ref PublicHostedZoneId
+
+  DBRecordSet:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      Properties:
+        HostedZoneId: !Ref PrivateHostedZoneId
+        Name: !Join ['', [ 'db', !Ref DomainName, '.']]
+        ResourceRecords: 
+        - 19.2.168.1.10
+        TTL: '30'
+        Type: A
+      
+  CacheRecordSet:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      Properties:
+        HostedZoneId: !Ref PrivateHostedZoneId
+        Name: !Join ['', [ 'cache', !Ref DomainName, '.']]
+        ResourceRecords:
+        - 19.2.168.1.10
+        TTL: '30'
+        Type: A
+      
+  MessageRecordSet:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      Properties:
+        HostedZoneId: !Ref PrivateHostedZoneId
+        Name: !Join ['', [ 'message', !Ref DomainName, '.']]
+        ResourceRecords:
+        - 19.2.168.1.10
+        TTL: '30'
+        Type: A
+      
+  ContainerServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2008-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole'
+
+  CacheTD:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: ECSCluster
+    Properties:
+      Family:  !Ref 'AWS::StackName'
+      NetworkMode: cache-ECS_CLUSTER_NAME
+      ContainerDefinitions:
+        - Name: !Ref AppName
+          MountPoints:
+            - SourceVolume: cache
+              ContainerPath: /opt/jboss/infinispan-server/standalone/configuration/skydrm/
+            - SourceVolume: cachestore
+              ContainerPath: /var/tmp/
+          Image: 579292207088.dkr.ecr.us-east-1.amazonaws.com/jboss/infinispan-server:9.4.0.Final
+          PortMappings:
+            - ContainerPort: 8000
+              HostPort: 8000
+            - ContainerPort: 9990
+              HostPort: 9990
+          Command:
+            - >-
+              bin/standalone.sh -c "skydrm/infinispan_server.xml"
+          Memory: '500'
+          WorkingDirectory: /opt/jboss/infinispan-server
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              'awslogs-region': !Ref 'AWS::Region'
+              'awslogs-group': /ecs/cache-ECS_CLUSTER_NAME
+              'awslogs-stream-prefix': !Ref 'AWS::StackName'
+      Volumes:
+        - Host:
+            SourcePath: /mnt/efs/ECS_CLUSTER_NAME/cache
+          Name: cache
+        - Host:
+            SourcePath: /mnt/efs/ECS_CLUSTER_NAME/cachestore
+          Name: cachestore      
+
+  DatabaseTD:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: ECSCluster
+    Properties:
+      Family: !Ref 'AWS::StackName'
+      NetworkMode: bridge
+      ContainerDefinitions:
+        - Name: db-ECS_CLUSTER_NAME
+          MountPoints:
+            - SourceVolume: db-data
+              ContainerPath: /var/lib/postgresql/data
+            - SourceVolume: db-init
+              ContainerPath: /docker-entrypoint-initdb.d
+          Image: 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm-db:10.0271
+          PortMappings:
+            - ContainerPort: 5432
+              HostPort: 5432
+          Memory: '500'
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              'awslogs-region': !Ref 'AWS::Region'
+              'awslogs-group': /ecs/db-ECS_CLUSTER_NAME
+              'awslogs-stream-prefix': !Ref 'AWS::StackName'
+      Volumes:
+        - Host:
+            SourcePath: /mnt/efs/ECS_CLUSTER_NAME/db-data
+          Name: db-data
+        - Host:
+            SourcePath: /mnt/efs/ECS_CLUSTER_NAME/db
+          Name: db-init   
+
+  MessageTD:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: ECSCluster
+    Properties:
+      Family: !Ref 'AWS::StackName'
+      NetworkMode: bridge
+      ContainerDefinitions:
+        - Name: message-ECS_CLUSTER_NAME
+          MountPoints:
+            - SourceVolume: rabbitmq_data
+              ContainerPath: /var/lib/rabbitmq/data
+          PortMappings:
+            - ContainerPort: 5672
+              HostPort: 5672
+            - ContainerPort: 15672
+              HostPort: 15672
+          Memory: '500'
+          Essential: true
+          Message: 579292207088.dkr.ecr.us-east-1.amazonaws.com/rabbitmq:3-management
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              'awslogs-region': !Ref 'AWS::Region'
+              'awslogs-group': /ecs/message-ECS_CLUSTER_NAME
+              'awslogs-stream-prefix': !Ref 'AWS::StackName'
+      Volumes:
+        - Host:
+            SourcePath: /mnt/efs/ECS_CLUSTER_NAME/shared
+          Name: rabbitmq_data
+
+  CacheService:
+    Type: AWS::ECS::Service
+    DependsOn: CacheTD
+    Properties:
+      Cluster: !Ref ECSCluster
+      LaunchType: EC2
+      SchedulingStrategy: REPLICA
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 10
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+      TaskDefinition: !Ref CacheTD
+      ServiceName: cache-ECS_CLUSTER_NAME
+
+  DBService:
+    Type: AWS::ECS::Service
+    DependsOn: DatabaseTD
+    Properties:
+      Cluster: !Ref ECSCluster
+      LaunchType: EC2
+      SchedulingStrategy: REPLICA
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 10
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+      TaskDefinition: !Ref DatabaseTD
+      ServiceName: db-ECS_CLUSTER_NAME
+
+  MessageService:
+    Type: AWS::ECS::Service
+    DependsOn: MessageTD
+    Properties:
+      Cluster: !Ref ECSCluster
+      LaunchType: EC2
+      SchedulingStrategy: REPLICA
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 10
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+      TaskDefinition: !Ref MessageTD
+      ServiceName: message-ECS_CLUSTER_NAME
+
+  RMSService:
+    Type: 'AWS::ECS::Service'
+    DependsOn: RMSTD
+    Properties:
+      Cluster: !Ref ECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      HealthCheckGracePeriodSeconds: 30
+      LoadBalancers:
+      - ContainerName: rms
+        ContainerPort: 8443
+        TargetGroupArn: !Ref RMSTargetGroup
+      PlacementStrategies:
+      - Type: spread
+        Field: 'attribute:ecs.availability-zone'
+      - Type: spread
+        Field: instanceId
+      Role: !GetAtt 'ServiceRole.Arn'
+      TaskDefinition: !Ref RMSTD
+
+  CPUUtilizationTooHighAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Average CPU utilization over last 10 minutes higher than 80%'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+      - Name: ClusterName
+        Value: !Ref ECSCluster
+      - Name: ServiceName
+        Value: !GetAtt 'RMSService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      AlarmActions: !Ref Topic
+
+  ServiceFailedNotification:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      EventPattern:
+        source:
+        - 'aws.ec2'
+        'detail-type':
+        - 'ECS Service Action'
+        resources:
+        - !Ref Service
+        detail:
+          eventType:
+          - ERROR
+          - WARN
+      State: ENABLED
+      Targets:
+      - Arn: !Ref Topic
+        Id: rule
+
+  ScalableTargetRole: # based on http://docs.aws.amazon.com/AmazonECS/latest/developerguide/autoscale_IAM_role.html
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'application-autoscaling.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Policies:
+      - PolicyName: ecs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'ecs:DescribeServices'
+            - 'ecs:UpdateService'
+            Resource: '*'
+      - PolicyName: cloudwatch
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'cloudwatch:DescribeAlarms'
+            Resource: '*'
+  ScalableTarget:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: !Ref MinCapacity
+      ResourceId: !Sub
+      - 'service/${Cluster}/${Service}'
+      - Cluster: !Ref ECSCluster
+        Service: !GetAtt 'RMSService.Name'
+      RoleARN: !GetAtt 'ScalableTargetRole.Arn'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+  ScaleUpPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-up'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+        - MetricIntervalLowerBound: 0
+          ScalingAdjustment: 25
+  ScaleDownPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-down'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+        - MetricIntervalUpperBound: 0
+          ScalingAdjustment: -25
+  CPUUtilizationHighAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is running out of CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+      - Name: ClusterName
+        Value: !Ref ECSCluster
+      - Name: ServiceName
+        Value: !GetAtt 'RMSService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 60
+      AlarmActions:
+      - !Ref ScaleUpPolicy
+  CPUUtilizationLowAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is wasting CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+      - Name: ClusterName
+        Value: !Ref ECSCluster
+      - Name: ServiceName
+        Value: !GetAtt 'RMSService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: LessThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 30
+      AlarmActions:
+      - !Ref ScaleDownPolicy
+
+Outputs:
+  StackName:
+    Description: 'Stack Name.'
+    Value: !Sub '${AWS::StackName}'
+  ProjectBucketName:
+    Description: 'Name of the project bucket'
+    Value: !Ref ProjectBucket
+  MyspaceBucketName:
+    Description: 'Name of the myspace bucket'
+    Value: !Ref MyspaceBucket
+  AccessKey:
+    Description: 'S3 Bucket Access Key'
+    Value: !Ref BucketAccessKey
+  SercetKey:
+    Description: 'S3 Bucket Secret Key'
+    Value: !Ref BucketAccessKey
+  ECSClusterName:
+    Description: 'ECS Cluster Name'
+    Value: !Ref ECSCluster
+  DeploymentUrl:
+    Description: The URL of the SKYDRM Deployment
+    Value: !Join [ '.', [ 'http://www', !Ref SubdomainName,  !Ref DomainName ] ]

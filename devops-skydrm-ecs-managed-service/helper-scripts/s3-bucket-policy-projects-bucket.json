@@ -1,0 +1,22 @@
+{
+    "Version": "2012-10-17",
+    "Id": "Policy1415115909152",
+    "Statement": [
+        {
+            "Sid": "Access-to-specific-VPCE-only",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::512169772597:user/www-skydrm-com-s3-user"
+                ]
+            },
+            "Action": "*",
+            "Resource": "arn:aws:s3:::www-skydrm-com-projects/*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:sourceVpce": "vpce-0efb9b523f47feaaa"
+                }
+            }
+        }
+    ]
+}

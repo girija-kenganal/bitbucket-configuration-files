@@ -1,0 +1,53 @@
+{
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/message-WWW-SKYDRM-COM",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+          }
+        },
+      "portMappings": [
+        {
+          "hostPort": 5432,
+          "protocol": "tcp",
+          "containerPort": 5432
+        }
+      ],
+      "mountPoints": [
+        {
+          "containerPath": "/var/lib/postgresql/data",
+          "sourceVolume": "db-data"
+        },
+        {
+          "containerPath": "/docker-entrypoint-initdb.d",
+          "sourceVolume": "db-init"
+        }
+      ],
+      "memoryReservation": 500,
+      "image": "579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm-db:$BUILD",
+      "name": "db"
+    }
+  ],
+  "family": "db-WWW-SKYDRM-COM",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "host",
+  "volumes": [
+    {
+      "name": "db-data",
+      "host": {
+        "sourcePath": "/mnt/efs/WWW-SKYDRM-COM/db-data"
+      }
+    },
+    {
+      "name": "db-init",
+      "host": {
+        "sourcePath": "/mnt/efs/WWW-SKYDRM-COM/db"
+      }
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Reference Architecture to host WordPress on AWS - Creates Route 53 record set (if selected)
+
+Metadata:
+
+  Authors:
+    Description: kavashgar.manimarpan@nextlabs.com
+  License:
+    Description: 'Create Route 53'
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Route 53 Parameters
+      Parameters:
+        - DomainName
+        - PublicHostedZoneId
+    ParameterLabels:
+      PublicHostedZoneId:
+        default: DNS Host Id
+      DomainName:
+        default: Sub Domain
+
+Parameters:
+
+  PublicHostedZoneId:
+    AllowedPattern: ^[A-Z0-9]{14}$
+    Description: The DNS host zone id
+    Type: String
+
+  ALBDNSName:
+    Description: The DNS host zone id
+    Type: String
+
+  DomainName:
+    AllowedPattern: ^(?!http)(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: The main domain name of the SKYDRM Stack (Without subdomain)
+    Type: String
+
+Resources:
+
+  RecordSet:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: !Join ['', [!Ref DomainName, '.']]
+      RecordSets:
+      - Name: !Join ['', [!Ref SubDomainName, !Ref DomainName, '.']]
+        Type: A
+        AliasTarget:
+          DNSName: !GetAtt [ publicalb, Outputs.PublicAlbDnsName ]
+          EvaluateTargetHealth: True
+          HostedZoneId: !Ref PublicHostedZoneId
+
+  RecordSet:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      HostedZoneId: !Ref PrivateHostedZoneId
+      Name: !Sub
+      - !Join ['', [ !Ref DBSubDomainNameWithoutDot, !Ref DomainName, '.']]
+      - DBSubDomainNameWithoutDot: !Ref DBSubDomainNameWithoutDot
+        HostedZoneName: !Join [!Ref DBSubDomainNameWithoutDot, [!Ref DomainName, '.']]
+      ResourceRecords:
+      - !GetAtt 'DBInstance.DBEndPoint.Address'
+      TTL: '60'
+      Type: CNAME

@@ -1,0 +1,44 @@
+{
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/message-$ECS_CLUSTER_NAME",
+          "awslogs-region": "$REGION",
+          "awslogs-stream-prefix": "ecs"
+          }
+        },
+      "portMappings": [
+        {
+          "hostPort": 0,
+          "protocol": "tcp",
+          "containerPort": 8443
+        }
+      ],
+      "mountPoints": [
+        {
+          "containerPath": "/var/opt/nextlabs/rms/shared/",
+          "sourceVolume": "router"
+        }
+      ],
+      "memoryReservation": 500,
+      "image": "579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm-router:$BUILD",
+      "essential": true,
+      "name": "router"
+    }
+  ],
+  "family": "router-$ECS_CLUSTER_NAME",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "bridge",
+  "volumes": [
+    {
+      "name": "router",
+      "host": {
+        "sourcePath": "/mnt/efs/$ECS_CLUSTER_NAME"
+      }
+    }
+  ]
+}

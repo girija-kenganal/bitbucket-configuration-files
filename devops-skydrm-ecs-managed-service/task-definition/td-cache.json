@@ -1,0 +1,66 @@
+{
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cache-$ECS_CLUSTER_NAME",
+          "awslogs-region": "$REGION",
+          "awslogs-stream-prefix": "ecs"
+          }
+        },
+
+      "portMappings": [
+        {
+          "hostPort": 8000,
+          "protocol": "tcp",
+          "containerPort": 8000
+        },
+        {
+          "hostPort": 9990,
+          "protocol": "tcp",
+          "containerPort": 9990
+        }
+      ],
+      "entryPoint": [
+        "bin/standalone.sh",
+        "-c",
+        "skydrm/infinispan_server.xml"
+      ],
+      "mountPoints": [
+        {
+          "containerPath": "/opt/jboss/infinispan-server/standalone/configuration/skydrm/",
+          "sourceVolume": "cache"
+        },
+        {
+          "containerPath": "/var/tmp/",
+          "sourceVolume": "cachestore"
+        }
+      ],
+      "workingDirectory": "/opt/jboss/infinispan-server",
+      "memoryReservation": 300,
+      "image": "579292207088.dkr.ecr.us-east-1.amazonaws.com/jboss/infinispan-server:9.4.0.Final",
+      "essential": true,
+      "name": "cache"
+    }
+  ],
+  "family": "cache-$ECS_CLUSTER_NAME",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "host",
+  "volumes": [
+    {
+      "name": "cache",
+      "host": {
+        "sourcePath": "/mnt/efs/$ECS_CLUSTER_NAME/cache"
+      }
+    },
+    {
+      "name": "cachestore",
+      "host": {
+        "sourcePath": "/mnt/efs/$ECS_CLUSTER_NAME/cachestore"
+      }
+    }
+  ]
+}

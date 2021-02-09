@@ -1,0 +1,23 @@
+{
+    "serviceName": "db-WWW-SKYDRM-COM",
+    "desiredCount": 1,
+    "launchType": "EC2",
+    "taskDefinition": "arn:aws:ecs:us-east-1:512169772597:task-definition/db-WWW-SKYDRM-COM:1",
+    "deploymentConfiguration": {
+        "maximumPercent": 200,
+        "minimumHealthyPercent": 100
+    },
+    
+    "placementConstraints": [],
+    "placementStrategy": [
+        {
+            "type": "binpack",
+            "field": "MEMORY"
+        }
+    ],
+    "schedulingStrategy": "REPLICA",
+    "enableECSManagedTags": false
+    
+     
+}
+    
