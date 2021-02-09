@@ -1,0 +1,543 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy CC for skyDRM'
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0323c3dd2da7fb37d
+    us-west-2:
+      AMI: ami-0d6621c01e8c2de2c
+Parameters:
+  IAMRole:
+    Description: Select the IAM role from the list
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: cc_installer_access
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: saas-trails
+  PublicHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: ZNBFEU1QOVRQW
+  # PrivateHostedzoneId:
+  #   Type: String
+  #   Description: Please enter private hosted zone ID
+  #   Default: Z3JENDYAD9V5S0
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-08e5a21fd43e65df3
+  BastionSecurityGroupId:
+    Description: Security group Id for Bastion instance
+    Type: String
+    Default: sg-0c9ef55caa9eb5a18 
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0dcbe94b61ff2f51d
+  PrivateSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-041798db3800a2e8f
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-094f21517fcb7f90b
+  PublicSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0ced4224a3ecd60da
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.large
+    AllowedValues: [t2.large, m1.small, 
+      m1.medium, m1.large, m1.xlarge, m2.xlarge, m2.2xlarge, m2.4xlarge, m3.medium,
+      m3.large, m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge,
+      m4.10xlarge, c1.medium, c1.xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge,
+      c3.8xlarge, c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, g2.2xlarge,
+      g2.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge, r3.8xlarge, i2.xlarge,
+      i2.2xlarge, i2.4xlarge, i2.8xlarge, d2.xlarge, d2.2xlarge, d2.4xlarge, d2.8xlarge,
+      hi1.4xlarge, hs1.8xlarge, cr1.8xlarge, cc2.8xlarge, cg1.4xlarge]
+  LaunchConfigInstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.medium
+    AllowedValues: [t2.large, m1.small, t2.medium,
+      m1.medium, m1.large, m1.xlarge, m2.xlarge, m2.2xlarge, m2.4xlarge, m3.medium,
+      m3.large, m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge,
+      m4.10xlarge, c1.medium, c1.xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge,
+      c3.8xlarge, c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, g2.2xlarge,
+      g2.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge, r3.8xlarge, i2.xlarge,
+      i2.2xlarge, i2.4xlarge, i2.8xlarge, d2.xlarge, d2.2xlarge, d2.4xlarge, d2.8xlarge,
+      hi1.4xlarge, hs1.8xlarge, cr1.8xlarge, cc2.8xlarge, cg1.4xlarge]
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 30 
+  CertArn:
+    Description: ACM Certificate Arn
+    Type: String
+    Default: arn:aws:acm:us-east-1:488100914863:certificate/dea68da4-48b1-4d93-9432-9099ae35f049
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: pep.cloudaz.com.
+  CCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: dynamics-cc
+  JPCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: dynamics-jpc 
+  CCVersion:
+    Description: Select cc version to deploy on instance
+    Type: String 
+    Default: 8.7.2.0
+    AllowedValues:  
+        - 9.2.0.0
+        - 9.1.0.0
+        - 8.7.2.0
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !GetAtt SecurityGroup.GroupId
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: New CC-template
+        - Key: Owner
+          Value: David.Lim@nextlabs.com   
+        - Key: Project
+          Value: CC 8.7.2.0 
+        - Key: Region
+          Value: SGDC
+        - Key: TTL Shutdown Time
+          Value: 24
+        - Key: TTL Start Time
+          Value: 10
+      UserData:
+        'Fn::Base64': 
+          !Sub |
+            #!/bin/bash
+            
+            hostnamectl set-hostname ${CCSubdomainName}.${DomainName}
+              
+            HOST_NAME=${CCSubdomainName}.pep.cloudaz.com
+            HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+              
+            echo "$HOST_IP $HOST_NAME" >> /etc/hosts
+
+            yum update -y
+            yum install aws-cli unzip -y
+            yum install docker -y
+
+            service docker start 
+            systemctl enable docker.service
+
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/Platform_SAAS/ControlCenter-Linux-chef-8.7.2.0-13.zip /tmp
+            unzip /tmp/ControlCenter-Linux-chef-8.7.2.0-13.zip -d /usr/local
+            mv /usr/local/PolicyServer/cc_properties.json /usr/local/PolicyServer/cc_properties.json.bak
+            
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/cc_properties_file/cc_properties_file_cc8.7/cc_properties.json  /usr/local/PolicyServer/
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/License_file/license.dat /usr/local/
+
+            # Make Data Directory
+            mkdir -p /home/ec2-user/ccdata  
+            docker run -d -p 5432:5432 --name=ccdb -v /home/ec2-user/ccdata:/var/lib/postgresql/data -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_USER=ccdbuser -e POSTGRES_DB=ccdb -e POSTGRES_PASSWORD=Next1234 --restart=always postgres:9.5
+  
+            docker ps
+
+            cd /usr/local/PolicyServer
+            chmod 775 -R /usr/local/PolicyServer
+
+            ./install.sh -s
+            systemctl start CompliantEnterpriseServer 
+  EC2InstanceLaunchConfig: 
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      SecurityGroups: 
+        - Ref: SecurityGroup 
+      InstanceType: !Ref LaunchConfigInstanceType
+      IamInstanceProfile: !Ref IAMRole 
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      UserData:
+         'Fn::Base64': 
+          !Sub |
+            #!/bin/bash
+
+            hostnamectl set-hostname ${JPCSubdomainName}.${DomainName}
+              
+            HOST_NAME=${JPCSubdomainName}.pep.cloudaz.com
+            HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+              
+            echo "$HOST_IP $HOST_NAME" >> /etc/hosts
+            echo "${EC2Instance.PrivateIp} dynamics-cc.pep.cloudaz.com" >> /etc/hosts
+
+            yum install unzip -y && \
+            yum install awscli -y && \
+            yum install java-1.8.0-openjdk -y && \
+            yum clean all
+
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/Platform_SAAS/Oauth2JWTSecret_Plugin/Oauth2JWTSecret-Plugin-8.1.2.zip /tmp
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/Platform_SAAS/jpc/PolicyControllerJava-chef-8.7.2.0-13.zip /tmp
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/Platform_SAAS/jpc/apache-tomcat-8.5.45.zip /tmp
+
+            ln -sf /usr/share/zoneinfo/PST8PDT /etc/localtime
+            # DOWNLOAD TOMCAT INSTALLATION PACKAGE
+
+            unzip /tmp/apache-tomcat-8.5.45.zip -d /usr/share/
+            mv /usr/share/apache-tomcat-8.5.45 /usr/share/tomcat8
+            groupadd tomcat
+            useradd -M -s /bin/nologin -g tomcat -d /usr/share/tomcat8 tomcat
+            chown -R tomcat /usr/share/tomcat8
+            chmod +x /usr/share/tomcat8/bin/*.sh
+            chmod -R g+r /usr/share/tomcat8/conf
+            chmod -R g+r /usr/share/tomcat8/conf
+            chown -R tomcat /usr/share/tomcat8/webapps/ /usr/share/tomcat8/work/ /usr/share/tomcat8/temp/ /usr/share/tomcat8/logs/
+
+            # DOWNLAOD CHEF LINUX INSTALLER - CAN BE TUNED TO PASS VERSION NUMBER
+
+            unzip -o -q /tmp/PolicyControllerJava-chef-8.7.2.0-13.zip -d /usr/local
+            mv /usr/local/Policy_Controller_Java/jpc_properties.json /usr/local/Policy_Controller_Java/jpc_properties.json.bak
+            chmod +x /usr/local/Policy_Controller_Java/install.sh
+
+            mkdir -p /usr/share/tomcat8/nextlabs
+            #cp jpc_properties.json /usr/local/Policy_Controller_Java/
+            sudo chmod 777 -R /usr/local/Policy_Controller_Java
+            aws s3 cp s3://nxtlbsrelease-from-enggacc/jpc_properties_file/jpc_properties.json  /usr/local/Policy_Controller_Java
+
+
+            unzip -o -q /tmp/Oauth2JWTSecret-Plugin-8.1.2.zip -d /tmp/Oauth2JWTSecret-Plugin
+
+
+            export CATALINA_HOME=/usr/share/tomcat8
+
+            /usr/local/Policy_Controller_Java/install.sh -s
+
+
+            sed -i "s|jar-path.*|jar-path = /usr/share/tomcat8/nextlabs/dpc/jservice/jar/$(basename "$(find '/tmp/Oauth2JWTSecret-Plugin/Policy Controller' -type f -name *.jar)")|" "$(find '/tmp/Oauth2JWTSecret-Plugin/Policy Controller' -type f -name *.properties)"
+            find "/tmp/Oauth2JWTSecret-Plugin/Policy Controller" -type f -name "*.properties" -exec cp "{}" /usr/share/tomcat8/nextlabs/dpc/jservice/config/ \;
+            find "/tmp/Oauth2JWTSecret-Plugin/Policy Controller" -type f -name "*.jar" -exec cp "{}" /usr/share/tomcat8/nextlabs/dpc/jservice/jar/ \;
+
+
+            sh /usr/share/tomcat8/bin/catalina.sh start
+    DependsOn: EC2Instance         
+  ASG: 
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties: 
+      LaunchConfigurationName: !Ref EC2InstanceLaunchConfig
+      MinSize: 1
+      MaxSize: 2
+      DesiredCapacity: 1
+      Cooldown : 300
+      HealthCheckGracePeriod: 200
+      HealthCheckType: EC2
+      TargetGroupARNs: 
+        - !Ref ApplicationLBTargetGroup2
+      VPCZoneIdentifier: 
+        - !Ref PrivateSubnetId1A
+      Tags:
+        - Key: Name
+          Value: New JPC
+          PropagateAtLaunch: true
+        - Key: Owner
+          Value: David.Lim@nextlabs.com
+          PropagateAtLaunch: true 
+        - Key: Project
+          Value: JPC 8.7.2.0
+          PropagateAtLaunch: true
+        - Key: Region
+          Value: SGDC
+          PropagateAtLaunch: true
+        - Key: TTL Shutdown Time
+          Value: 24
+          PropagateAtLaunch: true
+        - Key: TTL Start Time
+          Value: 10
+          PropagateAtLaunch: true        
+  ServerScaleUpPolicy: 
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties: 
+      AdjustmentType: ChangeInCapacity
+      PolicyType: SimpleScaling
+      Cooldown: 300
+      AutoScalingGroupName: 
+        Ref: ASG
+      ScalingAdjustment: 1
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale-up if CPU > 80% for 5 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      AlarmActions: 
+        - !Ref ServerScaleUpPolicy 
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ASG                
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0 
+        #SourceSecurityGroupOwnerId: !Ref BastionSecurityGroupId
+      - IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        CidrIp: 0.0.0.0/0 
+        #SourceSecurityGroupOwnerId: sg-0403af2eb3ba3099a  
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+        #SourceSecurityGroupOwnerId: !GetAtt [NetworkLoadBalancer, ]
+      - IpProtocol: tcp
+        FromPort: 8443
+        ToPort: 8443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 58080
+        ToPort: 58080
+        CidrIp: 0.0.0.0/0     
+  DNSRecordSetForCCPublicZone: 
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      Comment: Zone apex alias targeted to LoadBalancer.
+      HostedZoneId: !Ref PublicHostedzoneId 
+      RecordSets:
+        - Name: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+          TTL: 900
+          Type: CNAME
+          ResourceRecords:
+            - !GetAtt NetworkLoadBalancer.DNSName
+  # DNSRecordSetForCCPrivateZone: 
+  #   Type: AWS::Route53::RecordSetGroup
+  #   Properties:
+  #     Comment: Zone apex alias targeted to LoadBalancer.
+  #     HostedZoneId: !Ref PrivateHostedzoneId 
+  #     RecordSets:
+  #       - Name: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+  #         TTL: 900
+  #         Type: A
+  #         ResourceRecords:
+  #            - !GetAtt EC2Instance.PrivateIp
+  DNSRecordSetForJPCPublicZone: 
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      Comment: Zone apex alias targeted to LoadBalancer.
+      HostedZoneId: !Ref PublicHostedzoneId 
+      RecordSets:
+        - Name: !Join ['', [!Ref 'JPCSubdomainName', ., !Ref 'DomainName']]
+          TTL: 900
+          Type: CNAME
+          ResourceRecords:
+            - !GetAtt ApplicationLoadBalancer.DNSName
+  ApplicationLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: !Ref BastionSecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0            
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: applicationloadbalancer
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationLBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: applicationlb
+  ApplicationLBHttpsListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - TargetGroupArn: !Ref ApplicationLBTargetGroup1
+          Type: forward
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  ApplicationLBListenerRule1:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 1
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ApplicationLBTargetGroup2
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'dynamics-jpc.pep.cloudaz.com'
+  ApplicationLBTargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: jpc-tg1
+      TargetType: instance
+      VpcId: !Ref VpcId
+      Protocol: HTTP 
+      Port: 8080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300
+      VpcId: !Ref VpcId        
+  ApplicationLBTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: jpc-tg2
+      TargetType: instance
+      VpcId: !Ref VpcId
+      Protocol: HTTP 
+      Port: 58080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300
+      VpcId: !Ref VpcId    
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: networkloadbalancer
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: network
+      Tags:
+        - Key: Name
+          Value: networklb
+  NetworkLoadBalancerTargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cc-target-group1
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /cas/login
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 443
+      Protocol: TLS
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref EC2Instance
+          Port: 443
+      TargetType: instance
+  NetworkLoadBalancerTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cc-target-group2
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: TCP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 8443
+      Protocol: TCP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref EC2Instance
+          Port: 8443
+      TargetType: instance  
+  NetworkLoadBalancerListener1:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates: 
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerTargetGroup1
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 443
+      Protocol: TLS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  NetworkLoadBalancerListener2:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerTargetGroup2
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 8443
+      Protocol: TCP
+           
