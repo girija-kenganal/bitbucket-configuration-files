@@ -1,0 +1,55 @@
+image: node:10
+pipelines:
+  branches:
+      s3:
+        - step:
+            name: Build app and deploy to staging.cloudaz.com
+            caches:
+              - node
+            script: # The script below will build the application.
+              - npm install
+              - npm install -g @angular/cli
+              - ng build --prod --build-optimizer --progress=false
+              - ls -ltr
+              - cd dist
+              - export DISTDIR=$(pwd)
+              - ls -ltr ${DISTDIR}/cloudaz-portal
+              - pipe: atlassian/aws-s3-deploy:0.3.2
+                variables:
+                  AWS_ACCESS_KEY_ID:  ${AWS_ACCESS_KEY_ID}
+                  AWS_SECRET_ACCESS_KEY:  ${AWS_SECRET_ACCESS_KEY}
+                  AWS_DEFAULT_REGION: 'us-east-1'
+                  ACL: "public-read"
+                  S3_BUCKET_URL: "http://staging.cloudaz.com.s3-website-us-east-1.amazonaws.com"
+                  LOCAL_PATH: ${DISTDIR}/cloudaz-portal
+
+              - pipe: atlassian/email-notify:0.3.4
+                variables:
+                  USERNAME: 'admin@cloudaz.com'
+                  PASSWORD: ${EMAIL_LOGIN_PASSWORD}
+                  FROM: 'admin@cloudaz.com'
+                  TO: 'kavashgar.manimarpan@nextlabs.com,david.lim@nextlabs.com'
+                  PORT: 587
+                  HOST: 'smtp.gmail.com'
+                  SUBJECT: 'staging.cloudaz.com has been updated'
+                  BODY_HTML: "Click this link to view staging site. <br><a href='http://staging.cloudaz.com'> http://staging.cloudaz.com </a>"
+        - step:
+            trigger: manual
+            name: "Deploy to Production"
+            script:
+              - npm install
+              - npm install -g @angular/cli
+              - ng build --prod --build-optimizer --progress=false
+              - ls -ltr
+              - cd dist
+              - export DISTDIR=$(pwd)
+              - ls -ltr ${DISTDIR}/cloudaz-portal
+              - echo "Got Green signal to push to production"
+              - pipe: atlassian/aws-s3-deploy:0.3.2
+                variables:
+                  AWS_ACCESS_KEY_ID:  ${AWS_ACCESS_KEY_ID}
+                  AWS_SECRET_ACCESS_KEY:  ${AWS_SECRET_ACCESS_KEY}
+                  AWS_DEFAULT_REGION: 'us-east-1'
+                  ACL: "public-read"
+                  S3_BUCKET: "cloudaz.com"
+                  LOCAL_PATH: ${DISTDIR}/cloudaz-portal

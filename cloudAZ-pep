@@ -1,0 +1,30 @@
+image: python:3.7.4-alpine3.10
+pipelines:
+  branches:
+      master:
+        - step:
+            name: Build app and deploy to Slack App (CloudAz Prod Account)
+            services:
+              - docker
+            caches:
+              - pip
+            script: # The script below will build the application.
+              # build the Docker image 
+              - export IMAGE_NAME=slack-pep:latest
+              - docker build -t $IMAGE_NAME .
+              - pipe: atlassian/aws-ecr-push-image:1.2.2
+                variables:
+                  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+                  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+                  AWS_DEFAULT_REGION: 'us-east-1'
+                  IMAGE_NAME: 'slack-pep:latest'
+              - pipe: atlassian/email-notify:0.3.4
+                variables:
+                  USERNAME: 'admin@cloudaz.com'
+                  PASSWORD: ${EMAIL_LOGIN_PASSWORD}
+                  FROM: 'admin@cloudaz.com'
+                  TO: 'kavashgar.manimarpan@nextlabs.com,david.lim@nextlabs.com,thomas.hii@nextlabs.com'
+                  PORT: 587
+                  HOST: 'smtp.gmail.com'
+                  SUBJECT: 'New version of SLACK_APP container has been published to ECR Registry '
+                  BODY_PLAIN: 'Check <a href="https://slack.pep.cloudaz.com/slack/entitlement">https://slack.pep.cloudaz.com/slack/entitlement</a> after 1-2 minutes'

@@ -1,0 +1,24 @@
+pipelines:
+  branches:
+    master:
+      - step:
+          name: Generate PDF using comply docker
+          services:
+            - docker
+          caches:
+            - docker # adds docker layer caching
+          script:
+            - rm -rf output/*
+            - docker run --rm -v "$PWD":/source strongdm/comply -c 'comply build'
+            - ls -ltr output
+            - pwd
+            - export DISTDIR=$(pwd)
+            - ls -ltr ${DISTDIR}
+            - pipe: atlassian/aws-s3-deploy:0.3.2
+              variables:
+                AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+                AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+                AWS_DEFAULT_REGION: "us-east-1"
+                ACL: "public-read"
+                S3_BUCKET: "soc2.nextlabs.com"
+                LOCAL_PATH: ${DISTDIR}/output

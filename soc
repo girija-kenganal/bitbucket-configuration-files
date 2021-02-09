@@ -1,0 +1,30 @@
+image: python:3.7.4-alpine3.10
+pipelines:
+  branches:
+      master:
+        - step:
+            name: Build app and deploy to SOC App (ServiceOps Account)
+            services:
+              - docker
+            caches:
+              - pip
+            script: # The script below will build the application.
+              # build the Docker image 
+              - export IMAGE_NAME=service-operation:$BITBUCKET_COMMIT
+              - docker build -t 'service-operation/service-operation' .
+              - pipe: atlassian/aws-ecr-push-image:1.2.0
+                variables:
+                  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+                  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+                  AWS_DEFAULT_REGION: 'us-east-1'
+                  IMAGE_NAME: 'service-operation/service-operation'
+              - pipe: atlassian/email-notify:0.3.4
+                variables:
+                  USERNAME: 'admin@skydrm.com'
+                  PASSWORD: ${EMAIL_LOGIN_PASSWORD}
+                  FROM: 'admin@skydrm.com'
+                  TO: 'kavashgar.manimarpan@nextlabs.com,david.lim@nextlabs.com,thomas.hii@nextlabs.com'
+                  PORT: 587
+                  HOST: 'smtp.gmail.com'
+                  SUBJECT: 'New version of SOC_APP has been published to ServiceOps ECS'
+                  BODY_PLAIN: 'Check <a href="https://soc.nextlabs.com">https://soc.nextlabs.com</a> After few 1-2 minutes'

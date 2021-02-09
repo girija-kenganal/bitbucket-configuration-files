@@ -1,0 +1,57 @@
+image: python:3.7.4-alpine3.10
+pipelines:
+  branches:
+      master:
+        - step:
+            name: Build app and deploy to Staging Account (Eng Services - approval.testdrm.com)
+            services:
+              - docker
+            caches:
+              - pip
+            script: # The script below will build the application.
+              # build the Docker image 
+              - export IMAGE_NAME=skydrm-approval:$BITBUCKET_COMMIT
+              - docker build -t 'skydrm-approval' .
+
+              - pipe: atlassian/aws-ecr-push-image:1.2.0
+                variables:
+                  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+                  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+                  AWS_DEFAULT_REGION: 'us-east-1'
+                  IMAGE_NAME: 'skydrm-approval'
+
+              - pipe: atlassian/email-notify:0.3.4
+                variables:
+                  USERNAME: 'admin@skydrm.com'
+                  PASSWORD: ${EMAIL_LOGIN_PASSWORD}
+                  FROM: 'admin@skydrm.com'
+                  TO: 'kavashgar.manimarpan@nextlabs.com,david.lim@nextlabs.com,thomas.hii@nextlabs.com'
+                  PORT: 587
+                  HOST: 'smtp.gmail.com'
+                  SUBJECT: 'New SKDYRM Approval container has been published to Staging ECR and Deployed '
+                  BODY_PLAIN: "Check <a href='https://approval.testdrm.com'> https://approval.testdrm.com</a> <br><br> And execute below pipeline to trigger production deployment. <br><br> Click this <a href='https://bitbucket.org/${BITBUCKET_WORKSPACE}/${BITBUCKET_REPO_SLUG}/addon/pipelines/home#!/results/${BITBUCKET_BUILD_NUMBER}'>build#${BITBUCKET_BUILD_NUMBER}</a> to trigger production deployment"
+        - step:
+            trigger: manual
+            name: "Deploy to Production *.skydrm.com"
+            script:
+              - echo "Got Green signal to push to production"
+              # build the Docker image 
+              - export IMAGE_NAME=skydrm-approval:$BITBUCKET_COMMIT
+              - docker build -t 'skydrm-approval' .
+              - pipe: atlassian/aws-ecr-push-image:1.2.0
+                variables:
+                  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID_PROD
+                  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY_PROD
+                  AWS_DEFAULT_REGION: 'us-east-1'
+                  IMAGE_NAME: 'skydrm-approval'
+
+              - pipe: atlassian/email-notify:0.3.4
+                variables:
+                  USERNAME: 'admin@skydrm.com'
+                  PASSWORD: ${EMAIL_LOGIN_PASSWORD}
+                  FROM: 'admin@skydrm.com'
+                  TO: 'kavashgar.manimarpan@nextlabs.com,david.lim@nextlabs.com,thomas.hii@nextlabs.com'
+                  PORT: 587
+                  HOST: 'smtp.gmail.com'
+                  SUBJECT: 'SKDYRM Approval artifact is being deployed to production,'
+                  BODY_PLAIN: "Check <a href='https://approval.skydrm.com'> https://approval.skydrm.com</a> <br><br>  You will get notification in teams channel within 2-4 mins."

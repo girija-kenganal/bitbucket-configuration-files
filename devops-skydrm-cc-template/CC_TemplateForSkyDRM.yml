@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy CC for skyDRM'
+Parameters:
+  AMI:
+    Description: AMI to deploy AWSLinux Instances
+    Type: String
+    Default: ami-0323c3dd2da7fb37d
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0e39e36e3c8ea851f
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-05574acdb41215a7d
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.large
+    AllowedValues: [t2.large, m1.small,
+      m1.medium, m1.large, m1.xlarge, m2.xlarge, m2.2xlarge, m2.4xlarge, m3.medium,
+      m3.large, m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge,
+      m4.10xlarge, c1.medium, c1.xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge,
+      c3.8xlarge, c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, g2.2xlarge,
+      g2.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge, r3.8xlarge, i2.xlarge,
+      i2.2xlarge, i2.4xlarge, i2.8xlarge, d2.xlarge, d2.2xlarge, d2.4xlarge, d2.8xlarge,
+      hi1.4xlarge, hs1.8xlarge, cr1.8xlarge, cc2.8xlarge, cg1.4xlarge]
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 30 
+  PrivateHostedzoneId:
+    Type: String
+    Description: Please enter private hosted zone ID
+    Default: Z064735923PV7V22CFL2K 
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: nextlabs.solutions.
+  SubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: ccname
+  CCVersion:
+    Description: Select cc version to deploy on instance
+    Type: String 
+    Default: 9.2.0.0
+    AllowedValues:  
+        - 9.2.0.0
+        - 9.1.0.0
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !Ref AMI
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !GetAtt SecurityGroup.GroupId
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      # UserData:
+      #   Fn::Base64:
+      #     Fn::Sub: |
+      #       #!/bin/bash -xe
+      #       #Prerequisite - Install Apach if not installed, start Apache and set it to start each time the system boots
+      #       sudo yum install httpd -y
+      #       sudo systemctl start httpd
+      #       sudo systemctl enable httpd
+      #       #First need to setup cartbot-auto client for let’s encrypt certificate generation
+      #       wget https://dl.eff.org/certbot-auto
+      #       sudo yum install certbot-auto
+      #       #set permission in cartbot-auto
+      #       chmod a+x certbot-auto
+      #       #making a request for certificate and verify the requests- /var/www/html webroot of you your project and add-ssl.us-est-2.elasticbeanstalk.com which domains need to generates the certificate should be https enabled
+      #       #sudo ./certbot-auto --debug -v --server https://acme-v01.api.letsencrypt.org/directory certonly --manual -w /var/www/html -d nextlabs.solutions
+      #       #-w in the above command has to point at the directory that your web server is serving pages out of which is not the case here, so --webroot can’t be used at all.Instead, you should be using --manual when getting the certificate on a separate computer from the web server
+      #       sudo ./certbot-auto certonly --manual -d nextlabs.solutions.
+      #       #certificates are saved at the below location(cert.pem,chain.pem,fullchain.pem,privkey.pem) and need to be root user to check these files - sudo su
+      #       sudo su
+      #       ll /etc/letsencrypt/live/nextlabs.solutions/
+      #       #need to update /etc/httpd/conf.d/ssl.conf file which is not there in this location so install SSL mod on your apacheserver
+      #       yum install mod24_ssl
+      #       #you will find /etc/httpd/cond.d/ssl.conf file for adding location
+      #       #Update Certificate location for let’s encrypt
+      #       SSLCertificateFile /etc/letsencrypt/live/ nextlabs.solutions/cert.pem
+      #       SSLCertificateKeyFile /etc/letsencrypt/live/ nextlabs.solutions/privkey.pem
+      #       SSLCertificateChainFile /etc/letsencrypt/live/ nextlabs.solutions/fullchain.pem
+      #       #after adding this need to restart the apache service
+      #       sudo service httpd restart
+      #       #Add HTTPS listener on port 443 for AWS instance, Security Groups inbound rules     
+      Tags:
+        - Key: Name
+          Value: cc-template1
+        - Key: Owner
+          Value: David.Lim@nextlabs.com   
+        - Key: Project
+          Value: SkyDRM.com Staging with CC 9.2 + RMS 268
+        - Key: Region
+          Value: SGDC
+        - Key: TTL Shutdown Time
+          Value: 24
+        - Key: TTL Start Time
+          Value: 10      
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0 
+        #SourceSecurityGroupOwnerId: sg-0403af2eb3ba3099a
+      - IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        CidrIp: 0.0.0.0/0 
+        #SourceSecurityGroupOwnerId: sg-0403af2eb3ba3099a  
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0 
+  EC2IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2IAMRole
+  # HostedZone: 
+  #   Type: AWS::Route53::HostedZone
+  #   Properties: 
+  #     HostedZoneConfig: 
+  #       Comment: My hosted zone for nextlabs.solutions.
+  #     Name: !Ref DomainName     
+  DNSRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref PrivateHostedzoneId
+      Comment: DNS name for my instance.
+      Name: !Join ['', [!Ref 'SubdomainName', ., !Ref 'DomainName']]
+      #Name: !Ref SubdomainName
+      Type: A
+      TTL: '900'
+      ResourceRecords:
+      - !GetAtt EC2Instance.PrivateIp
+Outputs:
+  EC2InstancePrivateIp:
+    Description: The EC2Instance private IP address.
+    Value: !GetAtt EC2Instance.PrivateIp
+  # WebsiteURL:
+  #     Description: The URL of the cc website
+  #     Value: !Join ['', ['https://', [!Ref 'SubdomainName', ., !Ref 'DomainName']]]          
