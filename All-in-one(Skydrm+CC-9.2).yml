@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy CC for skyDRM'
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0323c3dd2da7fb37d
+    us-west-2:
+      AMI: ami-0d6621c01e8c2de2c
+Parameters:
+  IAMRole:
+    Description: Select the IAM role from the list
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: ec2-s3-full-access
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-09024f48c9a67a91a
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-05574acdb41215a7d
+  PrivateSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0cad967142fef3e22  
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-052e1a0295b00a303
+  PublicSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-09eefe6610f804add
+  PublicHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: Z1KA504V4FCSGG  
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: nextlabs.solutions.
+  CCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: testcc
+  SkydrmSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: testskydrm  
+  SecurityGroup:
+    Type: String
+    Default: sg-0a389360c2a274a01    
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.large
+    AllowedValues: [t2.micro, t2.medium, t2.large]
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 30 
+Resources:
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref EC2Instance
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !Ref SecurityGroup
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: New All-in-one(Skydrm+CC-9.2) Template
+      UserData:
+        'Fn::Base64': 
+          !Sub |
+            #!/bin/bash
+            
+            hostnamectl set-hostname ${CCSubdomainName}.${DomainName}
+            
+            HOST_NAME=${CCSubdomainName}.nextlabs.solutions
+            HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+              
+            echo "$HOST_IP   $HOST_NAME" >> /etc/hosts
+
+            # Install CC-9.2
+            yum update -y
+            yum install aws-cli unzip -y
+            #yum install docker -y
+            yum-config-manger --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+            yum install -y http://ftp.riken.jp/Linux/cern/centos/7/extras/x86_64/Packages/container-selinux-2.9-4.el7.noarch.rpm
+            yum install –y https://download.docker.com/linux/centos/7/x86_64/stable/Packages/docker-ce-18.03.1.ce-1.el7.centos.x86_64.rpm
+            service docker start 
+            systemctl enable docker.service
+            sudo usermod -a -G docker ec2-user
+            amazon-linux-extras list | grep nginx1
+            sudo amazon-linux-extras enable nginx1
+            yum install nginx
+            cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf-bak
+            aws s3 cp s3://nxtlbsrelease/nginx.conf /etc/nginx
+            sed -i "s/HOST_IP/10.0.0.24/g" /etc/nginx/nginx.conf
+            sed -i "s/SkydrmSubdomainName/${SkydrmSubdomainName}/g" /etc/nginx/nginx.conf
+            sed -i "s/DomainName/${DomainName}/g" /etc/nginx/nginx.conf
+            
+            yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+            yum install certbot -y
+            yum install python-certbot-nginx -y
+            certbot --nginx -d ${SkydrmSubdomainName}.${DomainName}
+
+            aws s3 cp s3://nxtlbsrelease/Platform_SAAS/cc/ControlCenter-Linux-chef-9.2.0.0-18PS-Main.zip /tmp
+            unzip /tmp/ControlCenter-Linux-chef-9.2.0.0-18PS-Main.zip -d /usr/local
+            mv /usr/local/PolicyServer/cc_properties.json /usr/local/PolicyServer/cc_properties.json.bak
+            
+            aws s3 cp s3://nxtlbsrelease/cc_properties_file/cc_properties.json  /usr/local/PolicyServer/
+            aws s3 cp s3://nxtlbsrelease/License_file/license.dat /usr/local
+
+            # Make Data Directory
+            mkdir -p /home/ec2-user/ccdb-init
+            aws s3 cp s3://nxtlbsrelease/db-init.sql /home/ec2-user/ccdb-init
+            
+            mkdir -p /home/ec2-user/ccdata  
+            docker run -d -p 5433:5432 --name=ccdb -v /home/ec2-user/ccdata:/var/lib/postgresql/data -v /home/ec2-user/ccdb-init/:/docker-entrypoint-initdb.d/ -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_USER=ccdbuser -e POSTGRES_DB=ccdb -e POSTGRES_PASSWORD=Next1234 --restart=always postgres:9.5
+
+            docker ps
+
+            cd /usr/local/PolicyServer
+            chmod 775 -R /usr/local/PolicyServer
+
+            ./install.sh -s
+            systemctl start CompliantEnterpriseServer
+            # Wait for 3-5 mins and check logs (opt/nextlabs/PolicyServer/server/logs)
+
+            # CC-patch installation
+            cd /opt/nextlabs/PolicyServer/ 
+            service CompliantEnterpriseServer stop 
+            service ControlCenterES stop
+            cd server/logs 
+            mkdir logs-bak
+            mv *.gz logs-bak 
+            mv *.log logs-bak
+            mv *.zip logs-bak
+            cd apps 
+            mkdir apps-bak
+            mv control-center-console.war apps-bak
+            # DOwnload patch from this link(Only 1 patch console-center-console.war file) - http://nxt-build18-apache.nextlabs.com:9052/releases/CloudAZ/Platform/9.2.0.1%20(Patch%20to%209.2.0.0)/1/
+            #copy the patch to apps folder
+            aws s3 cp s3://nxtlbsrelease/Platform_SAAS/cc/ControlCenter_9.2.0.1_Patch.zip /tmp
+            unzip /tmp/ControlCenter_9.2.0.1_Patch.zip -d /apps
+            chown nextlabs:nextlabs control-center-console.war 
+            chmod 775 control-center-console.war 
+            cd tomcat/work 
+            rm -rf /opt/nextlabs/PolicyServer/server/tomcat/work/* 
+
+            rm -rf /opt/nextlabs/PolicyServer/server/tomcat/webapps/* 
+
+            rm -rf /opt/nextlabs/PolicyServer/server/data/search-index/data/* 
+
+            rm -rf /opt/nextlabs/PolicyServer/server/tomcat/temp/* 
+
+            rm -rf /opt/nextlabs/PolicyServer/server/logs/* 
+            service CompliantEnterpriseServer start 
+            service ControlCenterES start
+
+            # Change CC version number from 9.2 to 9.1 to support Skydrm
+            cd /etc/CompliantEnterpriseServer
+            sed -i "s/9.2/9.1/g" /etc/CompliantEnterpriseServer/server.conf
+            cd /opt/nextlabs/PolicyServer 
+            sed -i "s/9.2/9.1/g" /opt/nextlabs/PolicyServer/version.txt  
+
+            # Skydrm installation
+            aws s3 cp s3://nxtlbsrelease/shared.zip /tmp
+            mkdir -p /opt/nextlabs/rms
+            unzip /tmp/shared.zip -d /opt/nextlabs/rms
+            
+            # Replace CCSubdomainName and HOST_IP in docker compose file
+            cd /opt/nextlabs/rms/shared/
+            sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/docker-compose.yml
+            sed -i "s/HOST_IP/10.0.0.24/g" /opt/nextlabs/rms/shared/docker-compose.yml
+
+            # Replace CCSubdomainName, SkydrmSubdomainName and HOST_IP in admin properties file
+            cd /opt/nextlabs/rms/shared/conf
+            sed -i 's/DomainName/${DomainName}/g' /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}g' /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i "s/HOST_IP/10.0.0.24/g" /opt/nextlabs/rms/shared/conf/admin.properties
+            
+            # Replace CCSubdomainName, SkydrmSubdomainName and HOST_IP in router properties file
+            sed -i 's/DomainName/${DomainName}/g' /opt/nextlabs/rms/shared/conf/router.properties
+            #sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/conf/router.properties
+            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}g' /opt/nextlabs/rms/shared/conf/router.properties
+
+            # Replace CCSubdomainName, SkydrmSubdomainName and HOST_IP in viewer properties file
+            sed -i 's/DomainName/${DomainName}/g' /opt/nextlabs/rms/shared/conf/viewer.properties
+            sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/conf/viewer.properties
+            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}g' /opt/nextlabs/rms/shared/conf/viewer.properties
+                             
+            docker stack deploy --compose-file /opt/nextlabs/rms/shared/docker-compose.yml skydrm
+            
+            
+
+
+
+                      
+  
+           
