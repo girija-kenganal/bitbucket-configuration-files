@@ -3,7 +3,7 @@ Description: 'Deploy CC for skyDRM'
 Mappings:
   RegionMap:
     us-east-1:
-      AMI: ami-0323c3dd2da7fb37d
+      AMI: ami-047a51fa27710816e
     us-west-2:
       AMI: ami-0d6621c01e8c2de2c
 Parameters:
@@ -20,7 +20,7 @@ Parameters:
   VpcId:
     Description: The VPC where you want to create EC2
     Type: AWS::EC2::VPC::Id
-    Default: vpc-09024f48c9a67a91a
+    Default: vpc-0e39e36e3c8ea851f
   PrivateSubnetId1A:
     Description: The subnet where you want to create EC2
     Type: AWS::EC2::Subnet::Id
@@ -44,15 +44,18 @@ Parameters:
   DomainName:
     Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
     Type: String
-    Default: nextlabs.solutions.
+    Default: tdomain2.qalab01.nextlabs.com.
+  DomainName1:
+    Type: String
+    Default: tdomain2.qalab01.nextlabs.com
   CCSubdomainName:
     Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
     Type: String
-    Default: testcc
+    Default: vmware-cc
   SkydrmSubdomainName:
     Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
     Type: String
-    Default: testskydrm  
+    Default: vmware-skydrm  
   SecurityGroup:
     Type: String
     Default: sg-0a389360c2a274a01    
@@ -61,6 +64,10 @@ Parameters:
     Type: String
     Default: t2.large
     AllowedValues: [t2.micro, t2.medium, t2.large]
+  LocalIP:
+    Description: Use user provided LocalIP or Amazon provided PrivateIP
+    Type: String
+    Default: 10.23.57.115
   EC2VolumeType:
     Description: The volume type associated with the instance.
     Type: String
@@ -82,7 +89,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       IamInstanceProfile: !Ref IAMRole
-      SubnetId: !Ref PrivateSubnetId1A
+      SubnetId: !Ref PublicSubnetId1A
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -104,35 +111,52 @@ Resources:
             
             hostnamectl set-hostname ${CCSubdomainName}.${DomainName}
             
-            HOST_NAME=${CCSubdomainName}.nextlabs.solutions
-            HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
-              
-            echo "$HOST_IP   $HOST_NAME" >> /etc/hosts
+            CCHOST_NAME=${CCSubdomainName}.nextlabs.solutions
+            SkydrmHOST_NAME=${SkydrmSubdomainName}.nextlabs.solutions
+            # if [ -z "$LocalIP" ]
+            # then
+            #       echo "\$LocalIP is empty"
+            #       export HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+            # else
+            #       echo "\$LocalIP is NOT empty"
+            #       export HOST_IP=${LocalIP}
+            # fi
+            HOST_IP=${LocalIP}
+            echo "$HOST_IP   $CCHOST_NAME" >> /etc/hosts
+            echo "$HOST_IP   $SkydrmHOST_NAME" >> /etc/hosts
 
-            # Install CC-9.2
             yum update -y
             yum install aws-cli unzip -y
             #yum install docker -y
-            yum-config-manger --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-            yum install -y http://ftp.riken.jp/Linux/cern/centos/7/extras/x86_64/Packages/container-selinux-2.9-4.el7.noarch.rpm
-            yum install –y https://download.docker.com/linux/centos/7/x86_64/stable/Packages/docker-ce-18.03.1.ce-1.el7.centos.x86_64.rpm
+            #yum-config-manger --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+            #sudo yum install -y http://ftp.riken.jp/Linux/cern/centos/7/extras/x86_64/Packages/container-selinux-2.9-4.el7.noarch.rpm
+            #sudo yum install –y https://download.docker.com/linux/centos/7/x86_64/stable/Packages/docker-ce-18.03.1.ce-1.el7.centos.x86_64.rpm
+            sudo amazon-linux-extras install -y docker=18.03.1
             service docker start 
+            PRIVATE_IP="{ \"dns\": [\"$HOST_IP\", \"8.8.8.8\"] }"
+            echo "$PRIVATE_IP"  > /etc/docker/daemon.json
+            service docker restart 
             systemctl enable docker.service
             sudo usermod -a -G docker ec2-user
+            # Install nginx, modify nginx config file and start nginx service
             amazon-linux-extras list | grep nginx1
             sudo amazon-linux-extras enable nginx1
-            yum install nginx
+            yum install nginx -y
             cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf-bak
             aws s3 cp s3://nxtlbsrelease/nginx.conf /etc/nginx
-            sed -i "s/HOST_IP/10.0.0.24/g" /etc/nginx/nginx.conf
+            sed -i "s/HOST_IP/$HOST_IP/g" /etc/nginx/nginx.conf
             sed -i "s/SkydrmSubdomainName/${SkydrmSubdomainName}/g" /etc/nginx/nginx.conf
-            sed -i "s/DomainName/${DomainName}/g" /etc/nginx/nginx.conf
+            sed -i "s/DomainName/${DomainName1}/g" /etc/nginx/nginx.conf
             
-            yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-            yum install certbot -y
-            yum install python-certbot-nginx -y
-            certbot --nginx -d ${SkydrmSubdomainName}.${DomainName}
-
+            # Installing selfsigned cert-ssl
+            mkdir -p /etc/ssl/private
+            mkdir -p /etc/ssl/certs
+            sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt -subj '/CN=${SkydrmSubdomainName}.${DomainName}/O=NextLabs/C=US'
+            
+            #Starting nginx service
+            #To see userdata logs /var/log/cloud-init-output.log
+            sudo service nginx start
+            # Install CC-9.2
             aws s3 cp s3://nxtlbsrelease/Platform_SAAS/cc/ControlCenter-Linux-chef-9.2.0.0-18PS-Main.zip /tmp
             unzip /tmp/ControlCenter-Linux-chef-9.2.0.0-18PS-Main.zip -d /usr/local
             mv /usr/local/PolicyServer/cc_properties.json /usr/local/PolicyServer/cc_properties.json.bak
@@ -184,42 +208,67 @@ Resources:
             rm -rf /opt/nextlabs/PolicyServer/server/tomcat/temp/* 
 
             rm -rf /opt/nextlabs/PolicyServer/server/logs/* 
-            service CompliantEnterpriseServer start 
-            service ControlCenterES start
+            #service CompliantEnterpriseServer start 
+            #service ControlCenterES start
 
             # Change CC version number from 9.2 to 9.1 to support Skydrm
             cd /etc/CompliantEnterpriseServer
             sed -i "s/9.2/9.1/g" /etc/CompliantEnterpriseServer/server.conf
             cd /opt/nextlabs/PolicyServer 
-            sed -i "s/9.2/9.1/g" /opt/nextlabs/PolicyServer/version.txt  
+            sed -i "s/9.2/9.1/g" /opt/nextlabs/PolicyServer/version.txt 
+
+            service CompliantEnterpriseServer start
+            service ControlCenterES start 
 
             # Skydrm installation
             aws s3 cp s3://nxtlbsrelease/shared.zip /tmp
             mkdir -p /opt/nextlabs/rms
             unzip /tmp/shared.zip -d /opt/nextlabs/rms
+            cd /opt/nextlabs/rms/shared
+            chmod 777 -R /opt/nextlabs/rms/shared
+
+            #Login to AWS ECR repository and pull router, rms and viewer images locally  
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/skydrm-router:10.0312
+            docker pull 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/skydrm-router:10.0312
+            docker pull 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/skydrm-rms:10.0312
+            docker pull 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/skydrm-viewer:10.0312
+            
+            #Login to AWS ECR repository and pull skydrm-db image locally 
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/skydrm-db:10.0299
+            docker pull 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/skydrm-db:10.0299
+            
+            #Login to AWS ECR repository and pull skydrm-cache image locally 
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/infinispan-server:9.4.0.Final
+            docker pull 579292207088.dkr.ecr.us-east-1.amazonaws.com/skydrm/infinispan-server:9.4.0.Final
+            
+            #Login to AWS ECR repository and pull skydrm-rabbitMQ image locally 
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 579292207088.dkr.ecr.us-east-1.amazonaws.com/rabbitmq:3-management
+            docker pull 579292207088.dkr.ecr.us-east-1.amazonaws.com/rabbitmq:3-management
             
             # Replace CCSubdomainName and HOST_IP in docker compose file
             cd /opt/nextlabs/rms/shared/
-            sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/docker-compose.yml
-            sed -i "s/HOST_IP/10.0.0.24/g" /opt/nextlabs/rms/shared/docker-compose.yml
+            sed -i 's/CCSubdomainName/${CCSubdomainName}/g' /opt/nextlabs/rms/shared/docker-compose.yml
+            sed -i 's/DomainName/${DomainName1}/g' /opt/nextlabs/rms/shared/docker-compose.yml
+            sed -i "s/HOST_IP/$HOST_IP/g" /opt/nextlabs/rms/shared/docker-compose.yml
 
             # Replace CCSubdomainName, SkydrmSubdomainName and HOST_IP in admin properties file
             cd /opt/nextlabs/rms/shared/conf
-            sed -i 's/DomainName/${DomainName}/g' /opt/nextlabs/rms/shared/conf/admin.properties
-            sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/conf/admin.properties
-            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}g' /opt/nextlabs/rms/shared/conf/admin.properties
-            sed -i "s/HOST_IP/10.0.0.24/g" /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i 's/DomainName/${DomainName1}/g' /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i 's/CCSubdomainName/${CCSubdomainName}/g' /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}/g' /opt/nextlabs/rms/shared/conf/admin.properties
+            sed -i "s/HOST_IP/$HOST_IP/g" /opt/nextlabs/rms/shared/conf/admin.properties
             
             # Replace CCSubdomainName, SkydrmSubdomainName and HOST_IP in router properties file
-            sed -i 's/DomainName/${DomainName}/g' /opt/nextlabs/rms/shared/conf/router.properties
-            #sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/conf/router.properties
-            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}g' /opt/nextlabs/rms/shared/conf/router.properties
+            sed -i 's/DomainName/${DomainName1}/g' /opt/nextlabs/rms/shared/conf/router.properties
+            #sed -i 's/CCSubdomainName/${CCSubdomainName}/g' /opt/nextlabs/rms/shared/conf/router.properties
+            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}/g' /opt/nextlabs/rms/shared/conf/router.properties
 
             # Replace CCSubdomainName, SkydrmSubdomainName and HOST_IP in viewer properties file
-            sed -i 's/DomainName/${DomainName}/g' /opt/nextlabs/rms/shared/conf/viewer.properties
-            sed -i 's/CCSubdomainName/${CCSubdomainName}g' /opt/nextlabs/rms/shared/conf/viewer.properties
-            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}g' /opt/nextlabs/rms/shared/conf/viewer.properties
-                             
+            sed -i 's/DomainName/${DomainName1}/g' /opt/nextlabs/rms/shared/conf/viewer.properties
+            sed -i 's/CCSubdomainName/${CCSubdomainName}/g' /opt/nextlabs/rms/shared/conf/viewer.properties
+            sed -i 's/SkydrmSubdomainName/${SkydrmSubdomainName}/g' /opt/nextlabs/rms/shared/conf/viewer.properties
+
+            docker swarm init                 
             docker stack deploy --compose-file /opt/nextlabs/rms/shared/docker-compose.yml skydrm
             
             
