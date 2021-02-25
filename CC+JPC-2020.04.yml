@@ -1,0 +1,420 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy CC+JPC-2020.04'
+Mappings:
+  RegionMap:
+    us-west-2:
+      AMI: ami-09c5e030f74651050
+Parameters:
+  IAMRole:
+    Description: Select the IAM role from the list
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: ecsInstanceRole
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0023b794e300f2a52
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-084b3716170a8a3d2
+  PrivateSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-010802dfb0a2d6962   
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d4d8df4afb5768bc
+  PublicSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-069d47b0588c1f000
+  PublicHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: Z0072564391ETY6WDCWOM
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: dae.onnextlabs.com.
+  DomainName1:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: dae.onnextlabs.com  
+  CCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-cc
+  JPCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-jpc
+  CertArn:
+    Description: ACM Certificate Arn
+    Type: String
+    Default: arn:aws:acm:us-west-2:025378961092:certificate/e108b98f-c951-4734-99f4-f8971161157e
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.large
+    AllowedValues: [t2.micro, t2.medium, t2.large]
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 30 
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !Ref DAESG
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: New CC+JPC-2020.04 Template
+      UserData:
+        'Fn::Base64': 
+          !Sub |
+            #!/bin/bash
+            
+            hostnamectl set-hostname ${CCSubdomainName}.${DomainName}
+            
+            CCHOST_NAME=${CCSubdomainName}.dae.onnextlabs.com
+            HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+              
+            echo "$HOST_IP   $CCHOST_NAME" >> /etc/hosts
+            
+            yum update -y
+            yum install unzip -y
+            yum install aws-cli unzip -y
+            yum install docker -y
+            #sudo amazon-linux-extras install -y docker=18.03.1
+            service docker start 
+            systemctl enable docker.service
+            sudo usermod -a -G docker ec2-user
+            # Install nginx, modify nginx config file and start nginx service
+            # amazon-linux-extras list | grep nginx1
+            # sudo amazon-linux-extras enable nginx1
+            # yum install nginx -y
+            # cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf-bak
+            # aws s3 cp s3://nxtlbsrelease/nginx.conf /etc/nginx
+            # sed -i "s/HOST_IP/$HOST_IP/g" /etc/nginx/nginx.conf
+            # sed -i "s/DomainName/${DomainName1}/g" /etc/nginx/nginx.conf
+            # sudo service nginx start
+            
+            # Installing selfsigned cert-ssl
+            #mkdir -p /etc/ssl/private
+            #mkdir -p /etc/ssl/certs
+            
+            #Install CC-2020.04
+            aws s3 cp s3://nxltrelease/Platform_SAAS/cc/ControlCenter-Linux-2020.04-27.zip /tmp
+            unzip /tmp/ControlCenter-Linux-2020.04-27.zip -d /usr/local
+            mv /usr/local/PolicyServer/installation.properties /usr/local/PolicyServer/installation.propertiesn.bak
+            
+            aws s3 cp s3://nxltrelease/installation.properties/installation.properties  /usr/local/PolicyServer/
+            aws s3 cp s3://nxltrelease/License_file/license.dat /usr/local
+
+            # Make Data Directory
+            mkdir -p /home/ec2-user/ccdb-init
+            aws s3 cp s3://nxltrelease/db-init.sql /home/ec2-user/ccdb-init
+            
+            mkdir -p /home/ec2-user/ccdata  
+            docker run -d -p 5432:5432 --name=ccdb -v /home/ec2-user/ccdata:/var/lib/postgresql/data -v /home/ec2-user/ccdb-init/:/docker-entrypoint-initdb.d/ -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_USER=ccdbuser -e POSTGRES_DB=ccdb -e POSTGRES_PASSWORD=Next1234 --restart=always postgres:9.5
+
+            docker ps
+
+            cd /usr/local/PolicyServer
+            chmod 775 -R /usr/local/PolicyServer
+
+            ./install.sh -s
+            systemctl start CompliantEnterpriseServer
+            # Wait for 3-5 mins and check logs (opt/nextlabs/PolicyServer/server/logs)
+
+            #Install JPC-2020.04
+            sed -i "s/HOSTNAME=localhost.localdomain/HOSTNAME=newjpc.nextlabs.solutions/g" /etc/sysconfig/network
+
+            HOST_NAME=${JPCSubdomainName}.dae.onnextlabs.com
+            HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+              
+            echo "$HOST_IP  $HOST_NAME" >> /etc/hosts
+            service network restart
+            reboot           
+
+            yum install unzip -y && \
+            yum install awscli -y && \
+            yum install java-1.8.0-openjdk -y && \
+            yum clean all
+
+            aws s3 cp s3://nxltrelease/Platform_SAAS/Oauth2JWTSecret_Plugin/Oauth2JWTSecret-Plugin-8.1.2.zip /tmp
+            aws s3 cp s3://nxltrelease/Platform_SAAS/jpc/PolicyControllerJava-Linux-chef-2020.04-28.zip /tmp
+            aws s3 cp s3://nxltrelease/Platform_SAAS/jpc/apache-tomcat-8.5.53.zip /tmp
+
+            ln -sf /usr/share/zoneinfo/PST8PDT /etc/localtime
+            # DOWNLOAD TOMCAT INSTALLATION PACKAGE
+
+            unzip /tmp/apache-tomcat-8.5.53.zip -d /usr/share/
+            mv /usr/share/apache-tomcat-8.5.53 /usr/share/tomcat8
+            groupadd tomcat
+            useradd -M -s /bin/nologin -g tomcat -d /usr/share/tomcat8 tomcat
+            chown -R tomcat /usr/share/tomcat8
+            chmod +x /usr/share/tomcat8/bin/*.sh
+            chmod -R g+r /usr/share/tomcat8/conf
+            chmod -R g+r /usr/share/tomcat8/conf
+            chown -R tomcat /usr/share/tomcat8/webapps/ /usr/share/tomcat8/work/ /usr/share/tomcat8/temp/ /usr/share/tomcat8/logs/
+
+            # DOWNLAOD CHEF LINUX INSTALLER - CAN BE TUNED TO PASS VERSION NUMBER
+
+            unzip -o -q /tmp/PolicyControllerJava-chef-8.7.2.0-13.zip -d /usr/local
+            mv /usr/local/Policy_Controller_Java/jpc_properties.json /usr/local/Policy_Controller_Java/jpc_properties.json.bak
+            chmod +x /usr/local/Policy_Controller_Java/install.sh
+
+            mkdir -p /usr/share/tomcat8/nextlabs
+            #cp jpc_properties.json /usr/local/Policy_Controller_Java/
+            sudo chmod 777 -R /usr/local/Policy_Controller_Java
+            aws s3 cp s3://nxltrelease/jpc_properties_file/jpc_properties.json  /usr/local/Policy_Controller_Java
+
+
+            unzip -o -q /tmp/Oauth2JWTSecret-Plugin-8.1.2.zip -d /tmp/Oauth2JWTSecret-Plugin
+
+
+            export CATALINA_HOME=/usr/share/tomcat8
+
+            /usr/local/Policy_Controller_Java/install.sh -s
+
+
+            sed -i "s|jar-path.*|jar-path = /usr/share/tomcat8/nextlabs/dpc/jservice/jar/$(basename "$(find '/tmp/Oauth2JWTSecret-Plugin/Policy Controller' -type f -name *.jar)")|" "$(find '/tmp/Oauth2JWTSecret-Plugin/Policy Controller' -type f -name *.properties)"
+            find "/tmp/Oauth2JWTSecret-Plugin/Policy Controller" -type f -name "*.properties" -exec cp "{}" /usr/share/tomcat8/nextlabs/dpc/jservice/config/ \;
+            find "/tmp/Oauth2JWTSecret-Plugin/Policy Controller" -type f -name "*.jar" -exec cp "{}" /usr/share/tomcat8/nextlabs/dpc/jservice/jar/ \;
+
+
+            sh /usr/share/tomcat8/bin/catalina.sh start
+  DAESG:
+      Type: AWS::EC2::SecurityGroup
+      DependsOn: 
+        - ApplicationLBSecurityGroup
+      Properties:
+        VpcId: !Ref VpcId
+        GroupDescription: Allow SSH Access
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: !Ref BastionSecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: sg-0403af2eb3ba3099a  
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          #SourceSecurityGroupOwnerId: !GetAtt [NetworkLoadBalancer, ]
+        - IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 58080
+          ToPort: 58080
+          CidrIp: 0.0.0.0/0    
+  ApplicationLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: !Ref BastionSecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0            
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: DAE-applicationloadbalancer
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationLBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: applicationlb
+  ApplicationLBHttpsListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - TargetGroupArn: !Ref ApplicationLBTargetGroup1
+          Type: forward
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  ApplicationLBListenerRule1:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 1
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ApplicationLBTargetGroup2
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'newjpc.nextlabs.solutions'
+  ApplicationLBTargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: dae-jpc-tg1
+      TargetType: instance
+      VpcId: !Ref VpcId
+      Protocol: HTTP 
+      Port: 8080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300
+      VpcId: !Ref VpcId        
+  ApplicationLBTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: dae-jpc-tg2
+      TargetType: instance
+      VpcId: !Ref VpcId
+      Protocol: HTTP 
+      Port: 58080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300
+      VpcId: !Ref VpcId    
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: DAE-networkloadbalancer
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: network
+      Tags:
+        - Key: Name
+          Value: networklb
+  NetworkLoadBalancerTargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: dae-cc-target-group1
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /cas/login
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 443
+      Protocol: TLS
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref EC2Instance
+          Port: 443
+      TargetType: instance
+  NetworkLoadBalancerTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: dae-cc-target-group2
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: TCP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 8443
+      Protocol: TCP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref EC2Instance
+          Port: 8443
+      TargetType: instance  
+  NetworkLoadBalancerListener1:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates: 
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerTargetGroup1
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 443
+      Protocol: TLS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  NetworkLoadBalancerListener2:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerTargetGroup2
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 8443
+      Protocol: TCP
+        
+            
+
+
+
+                      
+  
+           
