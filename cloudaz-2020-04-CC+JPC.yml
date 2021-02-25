@@ -1,0 +1,829 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudAZ 2020.04 CC+JPC CF Template'
+Mappings:
+  RegionMap:
+    us-west-2:
+      AMI: ami-0b3ae729038e54e43
+Parameters:
+  IAMRole:
+    Description: Please enter IAM role you want to use
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: ecsInstanceRole
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  PublicHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: Z0072564391ETY6WDCWOM
+  PrivateHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: Z04815581A28ALGDRHC51-NamespaceID 
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0023b794e300f2a52
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-084b3716170a8a3d2
+  PrivateSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-010802dfb0a2d6962
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d4d8df4afb5768bc
+  PublicSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-069d47b0588c1f000
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.xlarge
+    AllowedValues: [t2.large, m1.small, t2.xlarge] 
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2 
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 100 
+  CertArn:
+    Description: ACM Certificate Arn
+    Type: String
+    Default: arn:aws:acm:us-west-2:025378961092:certificate/e108b98f-c951-4734-99f4-f8971161157e
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: dae.onnextlabs.com.
+  CCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-cc
+  JPCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-jpc
+  ICENETSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-icenet
+  PVSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-pv
+  CCKeyStore:
+    Description: Generate using cc domain name.
+    Type: String
+  CCSSLCACERTS:
+    Type: String
+  # AdminPassword:
+  #   Description: Admin Password
+  #   Type: String
+  # APIClientSecret:
+  #   Description: APIClientSecret
+  #   Type: String
+  # CCAdministratorEmail:
+  #   Description: CCAdministratorEmail
+  #   Type: String    
+  CCContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: cc
+  JPCContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: jpc
+  ICENETContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: icenet
+  PVContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: pv  
+  DBContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: db
+  CCTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-CC
+  JPCTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-JPC
+  ICENETTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-ICENET
+  PVTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-PV
+  DBTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-DB
+  CCImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-2.amazonaws.com/control-center/nextlabs-control-center:2020.04
+  DBImageURL:
+    Type: String
+    Default: postgres:9.5
+  JPCImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-2.amazonaws.com/control-center/nextlabs-policy-controller-java:2020.04
+  ICENETImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-1.amazonaws.com/control-center/nextlabs-control-center:2020.04
+  PVImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-2.amazonaws.com/control-center/nextlabs-policy-validator:2020.04
+  ClusterName:
+    Type: String
+    Default: CLOUDAZ-2020-04
+  CCServiceName:
+    Type: String
+    Default: cloudaz-2020-04-cc
+  JPCServiceName:
+    Type: String
+    Default: cloudaz-2020-04-jpc
+  DBServiceName:
+    Type: String
+    Default: cloudaz-2020-04-db
+  ICENETServiceName:
+    Type: String
+    Default: cloudaz-2020-04-icenet
+  PVServiceName:
+    Type: String
+    Default: cloudaz-2020-04-pv
+  CCLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020-04-cc
+  JPCLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020-04-jpc
+  ICENETLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020-04-icenet
+  PVLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020-04-pv
+  DBLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020-04-db  
+  JPCApplicationLBTargetGroupName:
+    Type: String
+    Default: CC-2020-04-JPC-TG
+  # CCApplicationLBTargetGroupName:
+  #   Type: String
+  #   Default: TG-ACCENTURE-PEP-CLOUDAZ-COM
+  # SecurityGroupsId:
+  #   Type: String
+  #   Default:                        
+Resources:
+  EC2Instance:
+    DependsOn:
+        - Cluster
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !Ref DAESG
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: CloudAZ 2020.04 CC+JPC
+      UserData: 
+          'Fn::Base64': 
+            !Sub |  
+                #!/bin/bash -xe
+                #Install docker and start docker service
+                yum update -y
+                amazon-linux-extras install docker
+                service docker start
+                usermod -a -G docker ec2-user
+                #touch /etc/ecs/ecs.config
+                echo "ECS_CLUSTER= ${ClusterName}" >> /etc/ecs/ecs.config
+                
+                HOST_IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+                CCHOST_NAME=${CCSubdomainName}.dae.onnextlabs.com
+                echo "$HOST_IP   $CCHOST_NAME" >> /etc/hosts
+                #Install ecs agent and start ecs
+                #amazon-linux-extras install -y ecs
+                #systemctl enable --now ecs
+                #yum install -y ecs-init
+                #start ecs
+                yum update -y ecs-init
+                #this will update ECS agent, better when using custom AMI
+                /usr/bin/docker pull amazon/amazon-ecs-agent:latest
+                #Restart docker and ECS agent
+                service docker restart
+                start ecs
+                #cc source volume path  
+                mkdir -p /opt/nextlabs/control-center/cc-logs
+                chown -R 8888:root /opt/nextlabs/control-center 
+                #jpc source volume path 
+                mkdir -p /opt/nextlabs/PolicyServer/server/pdp-logs
+                mkdir -p /opt/nextlabs/PolicyServer/server/pdp-jservice
+                mkdir -p /opt/nextlabs/PolicyServer/server/pdp-lib
+                chown -R 8888:root /opt/nextlabs/PolicyServer/server
+                #db source volume path
+                mkdir -p /opt/nextlabs/postgres-data
+                #icenet source volume path
+                mkdir -p /opt/nextlabs/PolicyServer/server/icenet-logs
+                chown -R 8888:root /opt/nextlabs/PolicyServer/server
+                #pv source volume path
+                mkdir -p /opt/policyvalidator/data
+  DAESG:
+      Type: AWS::EC2::SecurityGroup
+      DependsOn: 
+        - ApplicationLBSecurityGroup
+      Properties:
+        VpcId: !Ref VpcId
+        GroupDescription: Allow SSH Access
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: !Ref BastionSecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: sg-0403af2eb3ba3099a  
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          #SourceSecurityGroupOwnerId: !GetAtt [NetworkLoadBalancer, ]
+        - IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 58080
+          ToPort: 58080
+          CidrIp: 0.0.0.0/0
+  NetworkLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        IpAddressType: ipv4
+        Name: networkloadbalancer
+        Scheme: internet-facing
+        Subnets: 
+          - !Ref PublicSubnetId1A
+        Type: network
+        Tags:
+          - Key: Name
+            Value: networklb
+  NetworkLoadBalancerCCTargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cc-target-group1
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /cas/login
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 443
+      Protocol: TLS
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      TargetType: ip
+  NetworkLoadBalancerCCTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cc-target-group2
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: TCP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 8443
+      Protocol: TCP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref EC2Instance
+          Port: 8443
+      TargetType: instance
+  NetworkLoadBalancerListener1:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates: 
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerCCTargetGroup1
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 443
+      Protocol: TLS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  NetworkLoadBalancerListener2:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerCCTargetGroup2
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 8443
+      Protocol: TCP
+  ApplicationLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0              
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: CC-2020-04-ALB
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationLBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: applicationlb
+  ApplicationLBHttpsListener1:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - TargetGroupArn: !Ref JPCApplicationLBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  JPCApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Ref JPCApplicationLBTargetGroupName
+      TargetType: instance
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 58080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300     
+  ApplicationLBListenerRule1:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 1
+      ListenerArn: !Ref ApplicationLBHttpsListener1
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref JPCApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'cloudaz-2020-04-jpc.dae.onnextlabs.com'        
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+  CCtaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref CCTaskDefinitionName  
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref CCContainerName
+          Image: !Ref CCImageURL
+          MountPoints:
+            - SourceVolume: cc-logs
+              ContainerPath: /opt/NextLabs/PolicyServer/server/logs
+            - SourceVolume: cc-logs
+              ContainerPath: /opt/NextLabs/PolicyServer/server/tomcat/logs   
+          Environment:
+            - Name: NEXTLABS_CC_ADMIN_PASSWORD
+              Value: sddd02fe4b0e2496726307ae0147f69d3
+            - Name: NEXTLABS_CC_COMMPROFILE_DABSLOCATION
+              Value: !Join ['',['https://', !Ref 'ICENETSubdomainName', ., !Ref 'DomainName',':8443/dabs']]
+            - Name: NEXTLABS_CC_COMMPROFILE_HEARTBEATFREQTIME
+              Value: 2
+            - Name: NEXTLABS_CC_COMMPROFILE_HEARTBEATFREQTIMEUNIT
+              Value: minutes
+            - Name: NEXTLABS_CC_COMMPROFILE_PUSHENABLED
+              Value: true
+            - Name: NEXTLABS_CC_DB_PASSWORD
+              Value: itisBlue888!
+            - Name: NEXTLABS_CC_DB_RETRYATTEMPTS
+              Value: 20
+            - Name: NEXTLABS_CC_DB_URL
+              Value: !Join ['',['jdbc:postgresql://', !Ref 'CCSubdomainName', ., !Ref 'DomainName','/ccdb']]
+            - Name: NEXTLABS_CC_DB_USERNAME
+              Value: ccdbuser
+            - Name: NEXTLABS_CC_DNSNAME
+              Value: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+            - Name: NEXTLABS_CC_ENVIRONMENT
+              Value: CONTAINER
+            - Name: NEXTLABS_CC_LICENSE
+              Value: AAAAAgACAAAAGAAC8cgrgLQdFj3hfVw83M1jcQzxB9c0mnwEAAEAAAADAAIAAAAYAAJMPF6uuyzn0f1xoJdWjX3P0NwUJ/U4gKIAAQAAAAQAAgAAABAAAvqt4gjcjeD82txgtPEljWQAAQAAAAUAAgAAAKAAAjCBnTANBgkqhkiG9w0BAQEFAAOBiwAwgYcCgYEAoyJ5xpr8qaSDK8+r2BDv0mJt9vZPS1IDHOgKaxWuw4YTZliF4hQfXSPUQ2OSZr2n+aUqaNMSHY0ItyKwby869ITk1pEm9pCQPjXWJ8sgGyKTcBT2jOw1srUjjOHwjwcOGCHfgeuA0+B9Efc/lwiUKo4bXxMAnEtdLphoNLRS/MsCAREAAQAAAAcAAgAAABgAAt9nw8jEFnAAEP4WS/7WVKkjD8NfRmNKzwABAAAACAACAAAAEAACWcAIM56NBn4B+1DbF2Mo5gABAAAACQACAAAAgAACO71bkMwOkULsDS6bAz9N70bob7RroC3W0nhdf8qrdUju29eH+jIoz9rYYBNz/jH+ZUww4A+lew1Da9aVcDVPl8eNlPnYTsda0pZPAAn748vgIe2wYCYyTT0uWFY1htuksSHN7LdTBtUWgoKhcB1JhDqkrQcbhdCgt8gsjPj/01QAAQAAABUAAgAAAHgAAkQrXK/7qml6yBv7q6PT3LTMuk68LhO99J4EJ7WnoBYiwvZTATp/cm0rdzATdJtaTwKa7DvVk/57fbmBWhMVWvAyhu3ms51xShVHz+Pfrmuy2QBk9jDH5JpSb/NAzw4nBjbhItEf6amkuO3CBj2p8GOOEmBUESk3QQABAAAADAACAAAAEAACvpRADlfQlm7EeUdXO5tK6QABAAAACwACAAAAAAACAAE=
+            - Name: NEXTLABS_CC_MANAGEMENTSERVER_PASSWORD
+              Value: se9ba84632f6491a4f4215ce8d972ba09e9961ef227dc5d88f1f34d250d9789f3
+            - Name: NEXTLABS_CC_RETRY_BACKOFF_PERIOD
+              Value: 5
+            - Name: NEXTLABS_CC_SERVICENAME
+              Value: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+            - Name: NEXTLABS_CC_SSL_CCKEYPAIRSTORE_CONTENT
+              Value: !Ref CCKeyStore
+            - Name: NEXTLABS_CC_SSL_CCKEYPAIRSTORE_KEYALIAS
+              Value: control_center
+            - Name: NEXTLABS_CC_SSL_CCKEYPAIRSTORE_PASSWORD
+              Value: sddd02fe4b0e2496726307ae0147f69d3
+            - Name: NEXTLABS_CC_SSL_KEYSTORE_PASSWORD
+              Value: sddd02fe4b0e2496726307ae0147f69d3
+            - Name: NEXTLABS_CC_SSL_TRUSTSTORE_PASSWORD
+              Value: sddd02fe4b0e2496726307ae0147f69d3
+            - Name: NEXTLABS_CC_TYPE
+              Value: MANAGEMENT_SERVER
+          User: 8888
+          PortMappings:
+            - ContainerPort: 443
+              HostPort: 443
+            - ContainerPort: 7443
+              HostPort: 7443
+            - ContainerPort: 8443
+              HostPort: 8443
+            - ContainerPort: 61616
+              HostPort: 61616
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref CCLogGroupName
+              awslogs-stream-prefix: ecs
+          Memory: '6301'
+          CPU: '1024'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/nextlabs/control-center/cc-logs
+          Name: cc-logs
+  CCservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: NetworkLoadBalancerListener1
+    Properties:
+      ServiceName: !Ref CCServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref CCTaskDefinitionName
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      HealthCheckGracePeriodSeconds: 30
+      LaunchType: EC2
+      ServiceRegistries:
+        - ContainerName: !Ref CCContainerName
+          RegistryArn: !GetAtt 'ServiceDiscovery.Arn'
+      LoadBalancers:
+        - ContainerName: !Ref CCContainerName
+          ContainerPort: 443
+          TargetGroupArn: !Ref NetworkLoadBalancerCCTargetGroup1 
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          #Change to DISABLED if you're using private subnets that have access to a NAT gateway
+          AssignPublicIp: DISABLED
+          Subnets:
+            - !Ref PrivateSubnetId1A
+          SecurityGroups:
+            - !Ref DAESG
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  ServiceDiscoveryNamespace:
+      Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+      Properties:
+        Description: AWS Cloud Map private DNS namespace for resources for example.com website
+        Vpc: !Ref VpcId
+        Name: dae.onnextlabs.com
+  ServiceDiscovery:
+      Type: AWS::ServiceDiscovery::Service
+      Properties: 
+        Description: Service Discovery for CC
+        DnsConfig:
+          NamespaceId: !Ref ServiceDiscoveryNamespace  
+          RoutingPolicy: MULTIVALUE
+          DnsRecords:
+            - TTL: 60
+              Type: A
+        HealthCheckCustomConfig: 
+          FailureThreshold: 1
+        #Name: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+        Name: !Ref CCSubdomainName
+        NamespaceId: !Ref ServiceDiscoveryNamespace
+  JPCtaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref JPCTaskDefinitionName  
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref JPCContainerName
+          Image: !Ref JPCImageURL
+          MountPoints:
+            - SourceVolume: pdp-logs
+              ContainerPath: /usr/share/apache-tomcat/nextlabs/logs
+            - SourceVolume: pdp-logs
+              ContainerPath: /usr/share/apache-tomcat/logs
+            - SourceVolume: pdp-jservice
+              ContainerPath: /usr/share/apache-tomcat/nextlabs/dpc/jservice
+            - SourceVolume: pdp-lib
+              ContainerPath: /usr/share/jre/lib/ext       
+          Environment:
+            - Name: ICENET_HOST
+              Value: !Join ['', [!Ref 'ICENETSubdomainName', ., !Ref 'DomainName']] 
+            - Name: ICENET_PORT
+              Value: 8443
+            - Name: JAVA_OPTS
+              Value: -Dnextlabs.support.xacml.policies=true
+            - Name: NEXTLABS_JPC_HOME
+              Value: /usr/share/apache-tomcat
+            - Name: POLICY_CONTROLLER_HOST
+              Value: jpc_host
+            - Name: POLICY_CONTROLLER_PORT
+              Value: 58080
+            - Name: SERVER_PORT
+              Value: 8080
+          User: 8888
+          PortMappings:
+            - ContainerPort: 58080
+              HostPort: 58080
+            - ContainerPort: 2000
+              HostPort: 2000
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref JPCLogGroupName
+              awslogs-stream-prefix: ecs       
+          Memory: '1500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/nextlabs/PolicyServer/server/pdp-logs
+          Name: pdp-logs
+        - Host:
+            SourcePath: /opt/nextlabs/PolicyServer/server/pdp-jservice
+          Name: pdp-jservice
+        - Host:
+            SourcePath: /opt/nextlabs/PolicyServer/server/pdp-lib
+          Name: pdp-lib    
+  JPCservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: ApplicationLBHttpsListener1
+    Properties:
+      ServiceName: !Ref JPCServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref JPCTaskDefinitionName
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      HealthCheckGracePeriodSeconds: 30
+      LaunchType: EC2
+      LoadBalancers:
+        - ContainerName: !Ref JPCContainerName
+          ContainerPort: 58080
+          TargetGroupArn: !Ref JPCApplicationLBTargetGroup
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  DBtaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref DBTaskDefinitionName 
+      NetworkMode: host
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref DBContainerName
+          Image: !Ref DBImageURL
+          MountPoints:
+            - SourceVolume: cc-db
+              ContainerPath: /var/lib/postgresql/data
+          Environment:
+            - Name: PGDATA
+              Value: /var/lib/postgresql/data/pgdata
+            - Name: POSTGRES_DB
+              Value: ccdb
+            - Name: POSTGRES_PASSWORD
+              Value: itisBlue888!
+            - Name: POSTGRES_USER
+              Value: ccdbuser
+          PortMappings:
+            - ContainerPort: 5432
+              HostPort: 5432
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref DBLogGroupName
+              awslogs-stream-prefix: ecs       
+          Memory: '2048'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/nextlabs/postgres-data
+          Name: cc-db
+  DBservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: NetworkLoadBalancerListener1
+    Properties:
+      ServiceName: !Ref DBServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref DBtaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      #HealthCheckGracePeriodSeconds: 30
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  ICENETtaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref ICENETTaskDefinitionName 
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref ICENETContainerName
+          Image: !Ref ICENETImageURL
+          MountPoints:
+            - SourceVolume: icenet-logs
+              ContainerPath: /opt/NextLabs/PolicyServer/server/logs
+            - SourceVolume: icenet-logs
+              ContainerPath: /opt/NextLabs/PolicyServer/server/tomcat/logs  
+          Environment:
+            - Name: NEXTLABS_CC_ENVIRONMENT
+              Value: CONTAINER
+            - Name: NEXTLABS_CC_MANAGEMENTSERVER_HOST
+              Value: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+            - Name: NEXTLABS_CC_MANAGEMENTSERVER_PASSWORD
+              Value: se9ba84632f6491a4f4215ce8d972ba09e9961ef227dc5d88f1f34d250d9789f3
+            - Name: NEXTLABS_CC_SSL_CACERTS_0_ALIAS
+              Value: control_center
+            - Name: NEXTLABS_CC_SSL_CACERTS_0_CONTENT
+              Value: !Ref CCSSLCACERTS 
+            - Name: NEXTLABS_CC_TYPE
+              Value: ICENET
+            - Name: NEXTLABS_CC_WAITFOR_URL
+              Value: !Join ['', ['https://', !Ref 'CCSubdomainName', ., !Ref 'DomainName', '/console/api/v1/system/status']]
+          User: 8888
+          PortMappings:
+            - ContainerPort: 8443
+              HostPort: 8443
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref ICENETLogGroupName
+              awslogs-stream-prefix: ecs       
+          Memory: '2144'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/nextlabs/PolicyServer/server/icenet-logs
+          Name: icenet-logs       
+  ICENETservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: NetworkLoadBalancerListener1
+    Properties:
+      ServiceName: !Ref ICENETServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref ICENETTaskDefinitionName
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      #HealthCheckGracePeriodSeconds: 30
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory        
+  PVtaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref PVTaskDefinitionName 
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref PVContainerName
+          Image: !Ref PVImageURL
+          MountPoints:
+            - SourceVolume: pv-data
+              ContainerPath: /opt/policyvalidator/data
+          Environment:
+            - Name: HEALTHCHECK_PORT
+              Value: 8888
+            - Name: SERVER_PORT
+              Value: 8443
+          PortMappings:
+            - ContainerPort: 8443
+              HostPort: 8443
+            - ContainerPort: 8888
+              HostPort: 8888
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref PVLogGroupName
+              awslogs-stream-prefix: ecs       
+          Memory: '2048'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/policyvalidator/data
+          Name: pv-data
+  PVservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: NetworkLoadBalancerListener1
+    Properties:
+      ServiceName: !Ref PVServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref PVtaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      #HealthCheckGracePeriodSeconds: 30
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory

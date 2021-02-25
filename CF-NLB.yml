@@ -1,0 +1,241 @@
+Mappings:
+  RegionMap:
+    us-west-1:
+      AMI: ami-005c06c6de69aee84
+    us-west-2:
+      AMI: ami-0e999cbd62129e3b1
+Parameters:
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.xlarge
+    AllowedValues: [t2.large, m1.small,t2.xlarge] 
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2 
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 100
+  IAMRole:
+    Description: Please enter IAM role you want to use
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: ecsInstanceRole
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0023b794e300f2a52
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-084b3716170a8a3d2
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d4d8df4afb5768bc
+  PublicSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-069d47b0588c1f000
+  CertArn:
+    Description: ACM Certificate Arn
+    Type: String
+    Default: arn:aws:acm:us-west-2:025378961092:certificate/e108b98f-c951-4734-99f4-f8971161157e
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: dae.onnextlabs.com.
+  JPCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-jpc
+  JPCApplicationLBTargetGroupName:
+    Type: String
+    Default: JPC-2020-04-TG
+Resources:
+  ChildStackSecurityGroup:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: "https://2020-04-cf-templates.s3-us-west-2.amazonaws.com/CF-SG.yml"
+      Parameters:
+        VpcId: !Ref VpcId
+  DAEEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !GetAtt [ ChildStackSecurityGroup, Outputs.MYSG ]
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: CloudAZ 2020.04 CC+JPC
+  NetworkLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        IpAddressType: ipv4
+        Name: networkloadbalancer
+        Scheme: internet-facing
+        Subnets: 
+          - !Ref PublicSubnetId1A
+        Type: network
+        Tags:
+          - Key: Name
+            Value: networklb
+  NetworkLoadBalancerCCTargetGroup1:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cc-target-group1
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /cas/login
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 443
+      Protocol: TLS
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref DAEEC2Instance
+          Port: 443
+      TargetType: instance
+  NetworkLoadBalancerCCTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cc-target-group2
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: TCP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      Port: 8443
+      Protocol: TCP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+      VpcId: !Ref VpcId    
+      Targets:
+        - Id: !Ref DAEEC2Instance
+          Port: 8443
+      TargetType: instance
+  NetworkLoadBalancerListener1:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates: 
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerCCTargetGroup1
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 443
+      Protocol: TLS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  NetworkLoadBalancerListener2:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: 
+            Ref: NetworkLoadBalancerCCTargetGroup2
+      LoadBalancerArn: 
+        Ref: NetworkLoadBalancer
+      Port: 8443
+      Protocol: TCP
+  ApplicationLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0              
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: CC-2020-04-ALB
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationLBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: applicationlb
+  ApplicationLBHttpsListener1:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - TargetGroupArn: !Ref JPCApplicationLBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  JPCApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Ref JPCApplicationLBTargetGroupName
+      TargetType: instance
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 58080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300     
+  ApplicationLBListenerRule1:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 1
+      ListenerArn: !Ref ApplicationLBHttpsListener1
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref JPCApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'cloudaz-2020-04-jpc.dae.onnextlabs.com'

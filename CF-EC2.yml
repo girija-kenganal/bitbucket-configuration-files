@@ -1,0 +1,77 @@
+Mappings:
+  RegionMap:
+    us-west-1:
+      AMI: ami-005c06c6de69aee84
+    us-west-2:
+      AMI: ami-0e999cbd62129e3b1
+Parameters:
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.xlarge
+    AllowedValues: [t2.large, m1.small,t2.xlarge] 
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2 
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 100 
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0023b794e300f2a52
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-084b3716170a8a3d2
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d4d8df4afb5768bc
+  IAMRole:
+    Description: Please enter IAM role you want to use
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: ecsInstanceRole
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+Resources:
+  ChildStackSecurityGroup:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: "https://2020-04-cf-templates.s3-us-west-2.amazonaws.com/CF-SG.yml"
+      Parameters:
+        VpcId: !Ref VpcId
+  DAEEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !GetAtt [ ChildStackSecurityGroup, Outputs.MYSG ]
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: CloudAZ 2020.04 CC+JPC
+Outputs:
+  MYEC2:
+    Description: The ID of the EC2
+    Value: !Ref DAEEC2Instance
+  

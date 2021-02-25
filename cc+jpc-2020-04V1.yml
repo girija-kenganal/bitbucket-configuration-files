@@ -1,0 +1,813 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CC All in one CF Template'
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI:  ami-0e2efdaddecea9838
+    us-west-2:
+      AMI: ami-0e999cbd62129e3b1
+Parameters:
+  IAMRole:
+    Description: Please enter IAM role you want to use
+    Type: String
+    ConstraintDescription: must be a valid IAM Role
+    Default: ecsInstanceRole
+  KeyName: 
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+    Default: sgdc-dev
+  PublicHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: Z0072564391ETY6WDCWOM
+   PrivateHostedzoneId:
+    Type: String
+    Description: Please enter public hosted zone ID
+    Default: Z04815581A28ALGDRHC51
+  VpcId:
+    Description: The VPC where you want to create EC2
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0023b794e300f2a52
+  PrivateSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-084b3716170a8a3d2
+  PrivateSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-010802dfb0a2d6962
+  PublicSubnetId1A:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d4d8df4afb5768bc
+  PublicSubnetId1B:
+    Description: The subnet where you want to create EC2
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-069d47b0588c1f000
+  InstanceType:
+    Description: Select the ec2 instance from the list
+    Type: String
+    Default: t2.xlarge
+  EC2VolumeType:
+    Description: The volume type associated with the instance.
+    Type: String
+    AllowedValues:
+        - gp2
+        - standard
+        - io1
+    Default: gp2
+  EC2VolumeSize:
+    Type: String
+    Description: The volume size associated with the instnace in gb.
+    Default: 100 
+  CertArn:
+    Description: ACM Certificate Arn
+    Type: String
+    Default: arn:aws:acm:us-west-2:025378961092:certificate/e108b98f-c951-4734-99f4-f8971161157e
+  DomainName:
+    Description: The route53 HostedZoneName. For example, "mydomain.com."  Don't forget the period at the end.
+    Type: String
+    Default: dae.onnextlabs.com.
+  CCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-cc
+  JPCSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-jpc
+  ICENETSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-icenet
+  PVSubdomainName:
+    Description: The subdomain of the dns entry. For example, hello -> hello.mydomain.com, hello is the subdomain.
+    Type: String
+    Default: cloudaz-2020-04-pv
+  CCContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: cc
+  JPCContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: jpc
+  ICENETContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: icenet
+  PVContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: pv  
+  DBContainerName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: db
+  CCTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-CC
+  JPCTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-JPC
+  ICENETTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-ICENET
+  PVTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-PV
+  DBTaskDefinitionName:
+    Type: String
+    Description: Name of app requiring ELB exposure
+    Default: CLOUDAZ-2020-04-DB
+  CCImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-2.amazonaws.com/control-center/nextlabs-control-center:2020.04
+  DBImageURL:
+    Type: String
+    Default: postgres:9.5
+  JPCImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-2.amazonaws.com/control-center/nextlabs-policy-controller-java:2020.04
+  ICENETImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-1.amazonaws.com/control-center/nextlabs-control-center:2020.04
+  PVImageURL:
+    Type: String
+    Default: 025378961092.dkr.ecr.us-west-2.amazonaws.com/control-center/nextlabs-policy-validator:2020.04
+  ClusterName:
+    Type: String
+    Default: CLOUDAZ-2020-04
+  CCServiceName:
+    Type: String
+    Default: cloudaz-2020.04-cc
+  JPCServiceName:
+    Type: String
+    Default: cloudaz-2020.04-jpc
+  DBServiceName:
+    Type: String
+    Default: cloudaz-2020.04-db
+  ICENETServiceName:
+    Type: String
+    Default: cloudaz-2020.04-icenet
+  PVServiceName:
+    Type: String
+    Default: cloudaz-2020.04-pv
+  CCLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020.04-cc
+  JPCLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020.04-jpc
+  ICENETLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020.04-icenet
+  PVLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020.04-pv
+  DBLogGroupName:
+    Type: String
+    Default: /ecs/cloudaz-2020.04-db
+Resources:
+  EC2Instance:
+    DependsOn:
+        - Cluster
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref IAMRole
+      SubnetId: !Ref PrivateSubnetId1A
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds: 
+        - !GetAtt SecurityGroup.GroupId
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/xvda"
+          Ebs: 
+            VolumeType: !Ref EC2VolumeType
+            DeleteOnTermination: True
+            VolumeSize: !Ref EC2VolumeSize
+      Tags:
+        - Key: Name
+          Value: All-in-one PS Team VM
+      UserData: 
+          'Fn::Base64': 
+            !Sub |  
+                #!/bin/bash -xe
+                Install docker and start docker service
+                yum update -y
+                amazon-linux-extras install docker
+                service docker start
+                usermod -a -G docker ec2-user
+                Install ecs agent and start ecs
+                amazon-linux-extras install -y ecs
+                systemctl enable --now ecs
+                yum install -y ecs-init
+                systemctl start ecs
+                touch /etc/ecs/ecs.config
+                echo "ECS_CLUSTER= ${ClusterName}" >> /etc/ecs/ecs.config
+                shutdown -r
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: 
+        - ApplicationLBSecurityGroup
+    Properties:
+      VpcId: !Ref VPCId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0 
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+        #GroupId: !Ref ApplicationLBSecurityGroup
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        #CidrIp: 0.0.0.0/0
+        SourceSecurityGroupId: !GetAtt ApplicationLBSecurityGroup.GroupId
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0      
+  # DNSRecordSetForCCPublicZone: 
+  #   Type: AWS::Route53::RecordSetGroup
+  #   Properties:
+  #     Comment: Zone apex alias targeted to LoadBalancer.
+  #     HostedZoneId: !Ref PublicHostedzoneId 
+  #     RecordSets:
+  #       - Name: !Join ['', [!Ref 'CCSubdomainName', ., !Ref 'DomainName']]
+  #         TTL: 900
+  #         Type: CNAME
+  #         ResourceRecords:
+  #           - !GetAtt ApplicationLoadBalancer.DNSName
+  # DNSRecordSetForJPCPublicZone: 
+  #   Type: AWS::Route53::RecordSetGroup
+  #   Properties:
+  #     Comment: Zone apex alias targeted to LoadBalancer.
+  #     HostedZoneId: !Ref PublicHostedzoneId 
+  #     RecordSets:
+  #       - Name: !Join ['', [!Ref 'JPCSubdomainName', ., !Ref 'DomainName']]
+  #         TTL: 900
+  #         Type: CNAME
+  #         ResourceRecords:
+  #           - !GetAtt ApplicationLoadBalancer.DNSName
+  ApplicationLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCId
+      GroupDescription: Allow SSH, HTTP and LoadBalancer Access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0              
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: applicationloadbalancer
+      Scheme: internet-facing
+      Subnets: 
+        - !Ref PublicSubnetId1A
+        - !Ref PublicSubnetId1B
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationLBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: applicationlb
+  ApplicationLBHttpsListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref CertArn
+      DefaultActions:
+        - TargetGroupArn: !Ref NginxApplicationLBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+  # ApplicationLBHttpsListener1:
+  #   Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  #   Properties:
+  #     DefaultActions:
+  #       - Type: redirect
+  #         RedirectConfig:
+  #          Protocol: HTTPS
+  #          Port: 443
+  #          Host: 'testdrm.com'
+  #          Path: '/rms/login'
+  #          Query: '#{query}'
+  #          StatusCode: HTTP_301
+  #     LoadBalancerArn: !Ref ApplicationLoadBalancer
+  #     Port: 80
+  #     Protocol: HTTP
+  ApplicationLBListenerRule1:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 1
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref CCApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'PS-cc.testdrm.com'
+  ApplicationLBListenerRule2:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 2
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref NginxApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'testdrm.com'      
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/rms/intro'
+  ApplicationLBListenerRule3:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 3
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref RMSApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'testdrm.com'      
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/rms/*'       
+  ApplicationLBListenerRule4:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 4
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref RouterApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'testdrm.com'      
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/router/*'       
+  ApplicationLBListenerRule5:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Priority: 5
+      ListenerArn: !Ref ApplicationLBHttpsListener
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ViewerApplicationLBTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - 'testdrm.com'      
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/viewer/*'
+  CCApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-PS-CC-TESTDRM-COM
+      TargetType: instance 
+      VpcId: !Ref VPCId
+      Protocol: HTTPS 
+      Port: 443 
+      HealthCheckEnabled: True
+      HealthCheckPath: /cas/login
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 10
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300
+  JPCApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-PS-JPC-TESTDRM-COM
+      TargetType: instance
+      VpcId: !Ref VPCId
+      Protocol: HTTP
+      Port: 58080 
+      HealthCheckEnabled: True
+      HealthCheckPath: /dpc/authorization/pdp
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300
+  NginxApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-PS-NGINX-TESTDRM-COM
+      TargetType: instance
+      VpcId: !Ref VPCId
+      Protocol: HTTPS
+      Port: 1443 
+      HealthCheckEnabled: True
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  300        
+  RouterApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-PS-ROUTER-TESTDRM-COM
+      TargetType: instance
+      VpcId: !Ref VPCId
+      Protocol: HTTPS
+      Port: 8443 
+      HealthCheckEnabled: True
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  30
+  RMSApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-PS-RMS-TESTDRM-COM
+      TargetType: instance
+      VpcId: !Ref VPCId
+      Protocol: HTTPS
+      Port: 8443 
+      HealthCheckEnabled: True
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key:  deregistration_delay.timeout_seconds
+          Value:  30 
+  ViewerApplicationLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-PS-VIEWER-TESTDRM-COM
+      TargetType: instance
+      VpcId: !Ref VPCId
+      Protocol: HTTPS
+      Port: 8443 
+      HealthCheckEnabled: True
+      HealthCheckIntervalSeconds: 120
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+  rmstaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref rmsTaskDefinitionName  
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref rmsContainerName
+          Image: !Ref rmsImageURL
+          MountPoints:
+            - SourceVolume: rms-logs
+              ContainerPath: /var/opt/nextlabs/rms/ 
+          PortMappings:
+            - ContainerPort: 8443
+              HostPort: 0
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: /ecs/rms-PSLogs
+              awslogs-stream-prefix: ecs
+          Memory: '500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /var/opt/nextlabs/rms/
+          Name: rms-logs
+  rmsservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: 
+        - ApplicationLBHttpsListener
+    Properties:
+      ServiceName: !Ref rmsServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref rmstaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      HealthCheckGracePeriodSeconds: 10
+      LaunchType: EC2
+      LoadBalancers:
+        - ContainerName: !Ref rmsContainerName
+          ContainerPort: 8443
+          TargetGroupArn: !Ref RMSApplicationLBTargetGroup
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  routertaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref routerTaskDefinitionName  
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref routerContainerName
+          Image: !Ref routerImageURL
+          MountPoints:
+            - SourceVolume: router-log
+              ContainerPath: /var/opt/nextlabs/router/
+          PortMappings:
+            - ContainerPort: 8443
+              HostPort: 0
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: /ecs/router-PSLogs
+              awslogs-stream-prefix: ecs       
+          Memory: '500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /var/opt/nextlabs/router/
+          Name: router-log
+  routerservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: 
+        - ApplicationLBHttpsListener
+    Properties:
+      ServiceName: !Ref routerServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref routertaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      HealthCheckGracePeriodSeconds: 10
+      LaunchType: EC2
+      LoadBalancers:
+        - ContainerName: !Ref routerContainerName
+          ContainerPort: 8443
+          TargetGroupArn: !Ref RouterApplicationLBTargetGroup
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  DBtaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref DBTaskDefinitionName 
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref DBContainerName
+          Image: !Ref DBImageURL
+          MountPoints:
+            - SourceVolume: db-data
+              ContainerPath: /var/lib/postgresql/data
+            - SourceVolume: db-init
+              ContainerPath: /docker-entrypoint-initdb.d
+          PortMappings:
+            - ContainerPort: 5432
+              HostPort: 5432
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: /ecs/db-PSLogs
+              awslogs-stream-prefix: ecs       
+          Memory: '500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /var/lib/postgresql/data
+          Name: db-data
+        - Host:
+            SourcePath: /docker-entrypoint-initdb.d
+          Name: db-init  
+  DBservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: 
+        - ApplicationLBHttpsListener
+    Properties:
+      ServiceName: !Ref DBServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref DBtaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      #HealthCheckGracePeriodSeconds: 10
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  viewertaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref viewerTaskDefinitionName 
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref viewerContainerName
+          Image: !Ref viewerImageURL
+          MountPoints:
+            - SourceVolume: viewer-shared
+              ContainerPath: /var/opt/nextlabs/viewer/shared/
+            - SourceVolume: viewer-packages
+              ContainerPath: /opt/nextlabs/rms/viewer/viewers/ 
+          PortMappings:
+            - ContainerPort: 8443
+              HostPort: 0
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: /ecs/viewer-PSLogs
+              awslogs-stream-prefix: ecs       
+          Memory: '500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/nextlabs/viewer/
+          Name: viewer-packages
+        - Host:
+            SourcePath: /var/opt/nextlabs/viewer/
+          Name: viewer-shared           
+  viewerservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: 
+        - ApplicationLBHttpsListener
+    Properties:
+      ServiceName: !Ref viewerServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref viewertaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      HealthCheckGracePeriodSeconds: 10
+      LaunchType: EC2
+      LoadBalancers:
+        - ContainerName: !Ref viewerContainerName
+          ContainerPort: 8443
+          TargetGroupArn: !Ref ViewerApplicationLBTargetGroup
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  cachetaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref cacheTaskDefinitionName 
+      NetworkMode: bridge
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref cacheContainerName
+          Image: !Ref cacheImageURL
+          MountPoints:
+            - SourceVolume: cache
+              ContainerPath: /opt/jboss/infinispan-server/standalone/configuration/skydrm/
+            - SourceVolume: cachestore
+              ContainerPath: /var/tmp/  
+          PortMappings:
+            - ContainerPort: 8000
+              HostPort: 8000
+            - ContainerPort: 9990
+              HostPort: 9990  
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: /ecs/cache-PSLogs
+              awslogs-stream-prefix: ecs       
+          Memory: '500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /opt/jboss/infinispan-server/standalone/configuration/skydrm/
+          Name: cache 
+        - Host:
+            SourcePath: /var/tmp/
+          Name: cachestore         
+  cacheservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: 
+        - ApplicationLBHttpsListener
+    Properties:
+      ServiceName: !Ref cacheServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref cachetaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      #HealthCheckGracePeriodSeconds: 10
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory
+  messagetaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref messageTaskDefinitionName 
+      NetworkMode: host
+      RequiresCompatibilities: 
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref messageContainerName
+          Image: !Ref messageImageURL
+          MountPoints:
+            - SourceVolume: rabbitmq_data
+              ContainerPath: /var/lib/rabbitmq/data
+          PortMappings:
+            - ContainerPort: 5672
+              HostPort: 5672
+            - ContainerPort: 15672
+              HostPort: 15672
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: /ecs/message-PSLogs
+              awslogs-stream-prefix: ecs       
+          Memory: '500'
+          Essential: true
+      Volumes:
+        - Host:
+            SourcePath: /var/lib/rabbitmq/data
+          Name: rabbitmq_data       
+  messageservice:
+    Type: AWS::ECS::Service
+    # This dependency is needed so that the load balancer is setup correctly on time
+    DependsOn: 
+        - ApplicationLBHttpsListener
+    Properties:
+      ServiceName: !Ref messageServiceName
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref messagetaskdefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      #This may need to be adjusted if the container takes a while to start up
+      #HealthCheckGracePeriodSeconds: 10
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: binpack
+          Field: memory                                        

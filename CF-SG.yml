@@ -1,0 +1,39 @@
+Parameters:
+  VpcId:
+      Description: The VPC where you want to create EC2
+      Type: AWS::EC2::VPC::Id
+      Default: vpc-0023b794e300f2a52
+Resources:
+  DAESG:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        VpcId: !Ref VpcId
+        GroupDescription: Allow SSH Access
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: !Ref BastionSecurityGroupId
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0 
+          #SourceSecurityGroupOwnerId: sg-0403af2eb3ba3099a  
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          #SourceSecurityGroupOwnerId: !GetAtt [NetworkLoadBalancer, ]
+        - IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 58080
+          ToPort: 58080
+          CidrIp: 0.0.0.0/0
+Outputs:
+  MYSG:
+    Description: The ID of the SG
+    Value: !Ref DAESG
